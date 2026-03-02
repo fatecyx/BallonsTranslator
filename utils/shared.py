@@ -98,7 +98,7 @@ USE_PYSIDE6 = False
 ON_MACOS = sys.platform == 'darwin'
 ON_WINDOWS = sys.platform == 'win32'
 HEADLESS = False
-DEBUG = False
+DEBUG = True
 args = None
 
 FUZZY_MATCH_IMAGE_NAME = False

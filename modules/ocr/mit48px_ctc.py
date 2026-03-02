@@ -462,7 +462,7 @@ class OCR48pxCTC:
                 prob = np.exp(total_logprob())
                 if prob < 0.3 :
                     continue
-                textblk.text.append(''.join(cur_texts))
+                textblk.text.append(''.join(cur_texts)+'\n')
                 textblk.update_font_colors(
                     [int(total_fr()), int(total_fg()), int(total_fb())],
                     [int(total_br()), int(total_bg()), int(total_bb())]

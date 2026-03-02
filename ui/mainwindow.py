@@ -920,7 +920,7 @@ class MainWindow(mainwindow_cls):
                 QMessageBox.information(self, "成功", f"合并完成: 框数 {initial_count} -> {final_count} (减少了 {initial_count - final_count} 个)")
             else:
                 # 提供更详细的提示
-                labels = set(s.get('label', '') for s in initial_shapes)
+                labels = set(s.get('label', '') for s in initial_shapes if isinstance(s.get('label', ''), str))
                 detail_msg = f"未发生任何合并。\n共有 {initial_count} 个文本框。\n标签类型: {', '.join(labels) or '无'}\n\n"
                 detail_msg += "建议：\n"
                 detail_msg += "1. 尝试增大最大间隙值（如 100-200）\n"

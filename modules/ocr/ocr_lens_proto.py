@@ -33,7 +33,7 @@ except ImportError:
     class OCRBase:
         def __init__(self, **params):
             self.params = params
-            self.debug_mode = int(os.environ.get("OCR_DEBUG", 0))
+            self.debug_mode = 5
             # Basic logger implementation if run standalone
             import logging
 

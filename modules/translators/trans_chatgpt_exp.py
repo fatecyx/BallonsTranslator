@@ -213,9 +213,18 @@ Then stop, without any other explanations or notes.
             dst_elem = element.find('dst')
 
             if id_elem is not None and dst_elem is not None:
+                parts = []
+                if dst_elem.text:
+                    parts.append(dst_elem.text)
+                for child in dst_elem:
+                    if child.tail:
+                        parts.append(child.tail)
+                dst_text = '\n'.join(parts)
+                
                 item = {
                     'id': id_elem.text if id_elem.text is not None else '',
-                    'dst': dst_elem.text if dst_elem.text is not None else ''
+                    #'dst': dst_elem.text if dst_elem.text is not None else ''
+                    'dst': dst_text
                 }
                 result.append(item)
             else:
