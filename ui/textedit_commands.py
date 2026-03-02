@@ -516,7 +516,7 @@ class MultiPasteCommand(QUndoCommand):
     def undo(self):
         for blkitem, etran in zip(self.blkitems, self.etrans):
             blkitem.undo()
-            etran.redo()
+            etran.undo()
 
 
 class MergeBlkItemsCommand(QUndoCommand):
