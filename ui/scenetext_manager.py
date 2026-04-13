@@ -15,7 +15,7 @@ from .textitem import TextBlkItem, TextBlock
 from .canvas import Canvas
 from .textedit_area import TransTextEdit, SourceTextEdit, TransPairWidget, SelectTextMiniMenu, TextEditListScrollArea, QVBoxLayout, Widget
 from utils.fontformat import FontFormat
-from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand, MergeBlkItemsCommand
+from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand, SplitBlkItemsCommand, MergeBlkItemsCommand
 from .text_panel import FontFormatPanel
 from utils.config import pcfg
 from utils import shared
@@ -337,6 +337,7 @@ class SceneTextManager(QObject):
         self.canvas.reset_angle.connect(self.onResetAngle)
         self.canvas.squeeze_blk.connect(self.onSqueezeBlk)
         self.canvas.merge_textblks.connect(self.onMergeBlkItems)
+        self.canvas.split_textblks.connect(self.onSplitBlkItems)
         self.canvas.incanvas_selection_changed.connect(self.on_incanvas_selection_changed)
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
@@ -713,6 +714,17 @@ class SceneTextManager(QObject):
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(SqueezeCommand(selected_blks, self.txtblkShapeControl))
+
+    def onSplitBlkItems(self):
+        selected_blks = self.canvas.selected_text_items()
+        if len(selected_blks) < 1:
+            return
+        # Filter to only blocks that have multi-line translation text
+        splittable = [b for b in selected_blks
+                      if len([l for l in b.toPlainText().split('\n') if l.strip()]) >= 2]
+        if not splittable:
+            return
+        self.canvas.push_undo_command(SplitBlkItemsCommand(splittable, self))
 
     def onMergeBlkItems(self):
         selected_blks = self.canvas.selected_text_items()

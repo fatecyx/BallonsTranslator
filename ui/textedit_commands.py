@@ -519,6 +519,291 @@ class MultiPasteCommand(QUndoCommand):
             etran.undo()
 
 
+class SplitBlkItemsCommand(QUndoCommand):
+    """Split selected TextBlkItems by translation lines into multiple blocks.
+    
+    - Horizontal blocks: split top-to-bottom along Y axis
+    - Vertical blocks: split right-to-left along X axis
+    - Supports multiple selected blocks simultaneously
+    - Maintains relative ordering of blocks
+    """
+
+    def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
+        super().__init__(parent)
+        import copy
+        import numpy as np
+
+        self.ctrl = ctrl  # SceneTextManager
+
+        # Sort by idx to maintain ordering
+        blk_list = sorted(blk_list, key=lambda b: b.idx)
+        self.blk_list = blk_list
+        self.pwidget_list: List[TransPairWidget] = [ctrl.pairwidget_list[b.idx] for b in blk_list]
+
+        # Record the original idx of each block (stable reference for reinsertion positions)
+        self.orig_idxs = [b.idx for b in blk_list]
+
+        # Snapshot for undo
+        self.old_rects = [b.absBoundingRect(qrect=True) for b in blk_list]
+        self.old_trans_texts = [pw.e_trans.toPlainText() for pw in self.pwidget_list]
+        self.old_src_texts = [pw.e_source.toPlainText() for pw in self.pwidget_list]
+        self.old_html_list = [b.toHtml() for b in blk_list]
+
+        # Pre-build the child block data for each source block (without adding them yet)
+        # Each group is a list of (TextBlock data, trans_text, src_text, QRectF)
+        self.child_data_groups = []  # List[List[dict]]
+
+        for blk, pw, rect, trans_text, src_text in zip(
+                blk_list, self.pwidget_list,
+                self.old_rects, self.old_trans_texts, self.old_src_texts):
+
+            lines = trans_text.split('\n')
+            non_empty = [l for l in lines if l.strip()]
+
+            if len(non_empty) < 2:
+                self.child_data_groups.append([])
+                continue
+
+            n = len(non_empty)
+            is_vertical = blk.blk.vertical
+            child_data = []
+
+            for i, line_text in enumerate(non_empty):
+                new_blk_data = copy.deepcopy(blk.blk)
+                new_blk_data.rich_text = ''
+
+                if is_vertical:
+                    # Vertical text: split columns right-to-left
+                    col_w = rect.width() / n
+                    new_x = rect.x() + (n - 1 - i) * col_w
+                    new_rect = QRectF(new_x, rect.y(), col_w, rect.height())
+                else:
+                    # Horizontal text: split rows top-to-bottom
+                    row_h = rect.height() / n
+                    new_y = rect.y() + i * row_h
+                    new_rect = QRectF(rect.x(), new_y, rect.width(), row_h)
+
+                new_blk_data._bounding_rect = [
+                    int(new_rect.x()), int(new_rect.y()),
+                    int(new_rect.width()), int(new_rect.height())
+                ]
+                xywh = np.array([new_rect.x(), new_rect.y(), new_rect.width(), new_rect.height()])
+                new_blk_data.set_lines_by_xywh(xywh)
+                new_blk_data.translation = line_text
+                new_blk_data.text = [src_text] if i == 0 else ['']
+
+                child_data.append({
+                    'blk_data': new_blk_data,
+                    'trans_text': line_text,
+                    'src_text': src_text if i == 0 else '',
+                })
+
+            self.child_data_groups.append(child_data)
+
+        # These will be populated on first redo
+        self.new_blk_groups: List[List[TextBlkItem]] = []
+        self.new_pwidget_groups: List[List[TransPairWidget]] = []
+        self.op_counter = 0
+
+    def redo(self):
+        if self.op_counter == 0:
+            self.op_counter += 1
+            self._do_split_first_time()
+        else:
+            self._do_split_recover()
+
+    def _do_split_first_time(self):
+        """First execution: create child items, delete originals, reorder."""
+        self.new_blk_groups = []
+        self.new_pwidget_groups = []
+
+        # Create new blocks for each source
+        for child_data_list in self.child_data_groups:
+            new_blks = []
+            new_pws = []
+            for cd in child_data_list:
+                new_blkitem = self.ctrl.addTextBlock(cd['blk_data'])
+                new_blkitem.setPlainText(cd['trans_text'])
+                new_pw = self.ctrl.pairwidget_list[-1]
+                new_pw.e_trans.setPlainText(cd['trans_text'])
+                new_pw.e_source.setPlainText(cd['src_text'])
+                new_blks.append(new_blkitem)
+                new_pws.append(new_pw)
+            self.new_blk_groups.append(new_blks)
+            self.new_pwidget_groups.append(new_pws)
+
+        # Delete originals that were successfully split
+        to_delete_blks = []
+        to_delete_pws = []
+        for blk, pw, new_blks in zip(self.blk_list, self.pwidget_list, self.new_blk_groups):
+            if new_blks:
+                to_delete_blks.append(blk)
+                to_delete_pws.append(pw)
+        if to_delete_blks:
+            self.ctrl.deleteTextblkItemList(to_delete_blks, to_delete_pws)
+
+        # Reorder new blocks to sit at original positions
+        self._reorder_to_original_positions()
+
+    def _do_split_recover(self):
+        """Subsequent redo: delete originals, recover children, reorder."""
+        to_delete_blks = []
+        to_delete_pws = []
+        for blk, pw, new_blks in zip(self.blk_list, self.pwidget_list, self.new_blk_groups):
+            if new_blks:
+                to_delete_blks.append(blk)
+                to_delete_pws.append(pw)
+        if to_delete_blks:
+            self.ctrl.deleteTextblkItemList(to_delete_blks, to_delete_pws)
+
+        for new_blks, new_pws in zip(self.new_blk_groups, self.new_pwidget_groups):
+            if new_blks:
+                self.ctrl.recoverTextblkItemList(new_blks, new_pws)
+
+        self._reorder_to_original_positions()
+
+    def _reorder_to_original_positions(self):
+        """
+        Physically reorder textblk_item_list and pairwidget_list so that 
+        child groups appear at the position where the original block was.
+        
+        At this point: original blocks are deleted, new child blocks are appended at tail.
+        We need to splice them into the right positions.
+        """
+        blk_item_list = self.ctrl.textblk_item_list
+        pairwidget_list = self.ctrl.pairwidget_list
+
+        # Collect all child items (in insertion order)
+        all_new_blk_set = set()
+        for new_blks in self.new_blk_groups:
+            for b in new_blks:
+                all_new_blk_set.add(id(b))
+
+        # Items that are NOT new children (the "kept" items)
+        kept = [(b, pairwidget_list[b.idx])
+                for b in blk_item_list if id(b) not in all_new_blk_set]
+
+        # Map: original_idx -> (child_blks, child_pws)
+        # orig_idxs references the idx each original block had BEFORE deletion.
+        # After deletion those slots are gone; we need to insert children in original order.
+        insert_map = {}  # orig_idx -> (child_blks, child_pws)
+        for orig_idx, new_blks, new_pws in zip(
+                self.orig_idxs, self.new_blk_groups, self.new_pwidget_groups):
+            if new_blks:
+                insert_map[orig_idx] = (new_blks, new_pws)
+
+        # Build the final ordered list:
+        # Walk through slots 0..N (N = total count after split).
+        # For each original position that had children, insert them; otherwise take from kept.
+        sorted_orig_idxs = sorted(insert_map.keys())
+
+        result_blks = []
+        result_pws = []
+        kept_iter = iter(kept)
+
+        # Total slots = len(kept) + sum(len(children) for split originals)
+        # We interleave: at each original slot, place its children; fill rest with kept items.
+
+        # Determine insertion positions accounting for removed originals:
+        # If original at idx=5 and there are 2 originals before it (idx 1 and 3),
+        # then after removal the "natural" position shifts to 5-2=3. But we want to keep order,
+        # so simply: process positions in original index order, inserting children groups,
+        # and fill remaining from kept.
+
+        # Simple approach: iterate 0 to total_count, at each slot figure out if it's a
+        # child group slot or a kept slot.
+        # After deleting len(split_originals) items and adding total_children items,
+        # total size = len(blk_item_list) (already reflects this).
+
+        n_total = len(blk_item_list)
+        n_split = len(sorted_orig_idxs)
+
+        # We'll use a position pointer approach:
+        # For each original index (in sorted order), we insert that group at that position.
+        # Between groups, we insert kept items.
+
+        pos = 0  # Current position in the result
+        kept_remaining = list(kept)
+        
+        for orig_idx in sorted_orig_idxs:
+            # How many kept items go before this group?
+            # After removing prior split originals: if orig_idx was at position orig_idx,
+            # and n_removed_before = number of split originals with idx < orig_idx,
+            n_removed_before = sum(1 for oi in sorted_orig_idxs if oi < orig_idx)
+            target_pos = orig_idx - n_removed_before
+            
+            # Fill kept items up to target_pos
+            while pos < target_pos and kept_remaining:
+                b, pw = kept_remaining.pop(0)
+                result_blks.append(b)
+                result_pws.append(pw)
+                pos += 1
+
+            # Insert child group
+            child_blks, child_pws = insert_map[orig_idx]
+            result_blks.extend(child_blks)
+            result_pws.extend(child_pws)
+            pos += len(child_blks)
+
+        # Append remaining kept items
+        for b, pw in kept_remaining:
+            result_blks.append(b)
+            result_pws.append(pw)
+
+        # Apply reorder
+        self.ctrl.textblk_item_list.clear()
+        self.ctrl.pairwidget_list.clear()
+        for ii, (b, pw) in enumerate(zip(result_blks, result_pws)):
+            b.idx = ii
+            pw.idx = ii
+            pw.e_source.idx = ii
+            pw.e_trans.idx = ii
+            self.ctrl.textblk_item_list.append(b)
+            self.ctrl.pairwidget_list.append(pw)
+
+        # Reorder widgets in the text panel layout
+        layout = self.ctrl.textEditList.vlayout
+        for pw in result_pws:
+            layout.removeWidget(pw)
+        for ii, pw in enumerate(result_pws):
+            layout.insertWidget(ii, pw)
+            pw.idx_label.setText(str(ii + 1).zfill(2))
+            pw.setVisible(True)
+
+        self.ctrl.updateTextBlkItemIdx()
+
+    def undo(self):
+        # Delete all child blocks
+        all_new_blks = []
+        all_new_pws = []
+        for new_blks, new_pws in zip(self.new_blk_groups, self.new_pwidget_groups):
+            all_new_blks.extend(new_blks)
+            all_new_pws.extend(new_pws)
+        if all_new_blks:
+            self.ctrl.deleteTextblkItemList(all_new_blks, all_new_pws)
+
+        # Recover original split blocks
+        to_recover = []
+        to_recover_pws = []
+        for blk, pw, new_blks in zip(self.blk_list, self.pwidget_list, self.new_blk_groups):
+            if new_blks:
+                to_recover.append(blk)
+                to_recover_pws.append(pw)
+        if to_recover:
+            self.ctrl.recoverTextblkItemList(to_recover, to_recover_pws)
+
+        # Restore original texts and rects
+        for blk, pw, rect, html, src_text, trans_text in zip(
+                self.blk_list, self.pwidget_list,
+                self.old_rects, self.old_html_list,
+                self.old_src_texts, self.old_trans_texts):
+            blk.setRect(rect)
+            blk.setHtml(html)
+            pw.e_source.setPlainText(src_text)
+            pw.e_trans.setPlainText(trans_text)
+
+
+
 class MergeBlkItemsCommand(QUndoCommand):
     """Merge multiple selected TextBlkItems into one, combining their bounding rects and text."""
     def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
