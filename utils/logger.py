@@ -5,7 +5,6 @@ import os.path as osp
 from glob import glob
 import termcolor
 
-
 if os.name == "nt":  # Windows
     import colorama
     colorama.init()
@@ -33,32 +32,50 @@ class ColoredFormatter(logging.Formatter):
                 return termcolor.colored(
                     text,
                     color=COLORS[levelname],
-                    attrs={"bold": True},
+                    attrs=["bold"],
                 )
 
             record.levelname2 = colored("{:<7}".format(record.levelname))
             record.message2 = colored(record.getMessage())
 
-            asctime2 = datetime.datetime.fromtimestamp(record.created)
-            record.asctime2 = termcolor.colored(asctime2, color="green")
-
             record.module2 = termcolor.colored(record.module, color="cyan")
             record.funcName2 = termcolor.colored(record.funcName, color="cyan")
             record.lineno2 = termcolor.colored(record.lineno, color="cyan")
+        else:
+            record.levelname2 = "{:<7}".format(record.levelname)
+            record.message2 = record.getMessage()
+            record.asctime2 = datetime.datetime.fromtimestamp(record.created)
+            record.module2 = record.module
+            record.funcName2 = record.funcName
+            record.lineno2 = record.lineno
         return logging.Formatter.format(self, record)
 
 FORMAT = (
     "[%(levelname2)s] %(module2)s:%(funcName2)s:%(lineno2)s - %(message2)s"
 )
 
+class SafeStreamHandler(logging.StreamHandler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            self.stream.write(msg + self.terminator)
+            self.flush()
+        except OSError:
+            pass
+        except Exception:
+            self.handleError(record)
+
+
 class ColoredLogger(logging.Logger):
 
     def __init__(self, name):
         logging.Logger.__init__(self, name, logging.WARNING)
 
-        color_formatter = ColoredFormatter(FORMAT)
+        import sys
+        use_color = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+        color_formatter = ColoredFormatter(FORMAT, use_color=use_color)
 
-        console = logging.StreamHandler()
+        console = SafeStreamHandler(sys.stdout)
         console.setFormatter(color_formatter)
 
         self.addHandler(console)

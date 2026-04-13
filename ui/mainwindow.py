@@ -644,6 +644,8 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
         self.titleBar.merge_tool_trigger.connect(self.on_open_merge_tool)
+        # 新增：保存所有结果的快捷键
+        self.titleBar.save_all_results_trigger.connect(self.on_save_all_results)
 
         shortcutA = QShortcut(QKeySequence("A"), self)
         shortcutA.activated.connect(self.shortcutBefore)
@@ -686,6 +688,69 @@ class MainWindow(mainwindow_cls):
             shortcut = QShortcut(QKeySequence(shortcut_key), self)
             shortcut.activated.connect(partial(self.drawingPanel.shortcutSetCurrentToolByName, tool_name))
             self.drawingPanel.setShortcutTip(tool_name, shortcut_key)
+
+    def on_save_all_results(self):
+        """
+        遍历所有加载的图片，强制输出所有结果图片
+        """
+        if self.imgtrans_proj.is_empty:
+            create_error_dialog(None, self.tr('No project loaded'))
+            return
+
+        try:
+            # 更新当前页面的文本信息
+            if self.canvas.text_change_unsaved():
+                self.st_manager.updateTextBlkList()
+
+            # 保存当前页面状态
+            original_page = self.imgtrans_proj.current_img
+
+            # 遍历所有页面
+            total_pages = len(self.imgtrans_proj.pages)
+            saved_count = 0
+
+            for idx, page_name in enumerate(self.imgtrans_proj.pages):
+                try:
+                    # 切换到该页面
+                    self.imgtrans_proj.set_current_img(page_name)
+                    self.canvas.updateCanvas()
+                    self.st_manager.updateSceneTextitems()
+
+                    # 保存该页面
+                    self.saveCurrentPage(
+                        update_scene_text=False,
+                        save_proj=False,
+                        restore_interface=False,
+                        save_rst_only=True
+                    )
+                    saved_count += 1
+
+                    # 在标题栏显示进度
+                    progress = int((idx + 1) / total_pages * 100)
+                    self.titleBar.setTitleContent(
+                        page_name=f"{page_name} ({progress}%)"
+                    )
+
+                    # 处理事件队列，保持UI响应
+                    self.app.processEvents()
+
+                except Exception as e:
+                    LOGGER.error(f"Failed to save {page_name}: {e}")
+                    continue
+
+            # 恢复到原始页面
+            if original_page and original_page in self.imgtrans_proj.pages:
+                self.imgtrans_proj.set_current_img(original_page)
+                self.canvas.updateCanvas()
+                self.st_manager.updateSceneTextitems()
+                self.titleBar.setTitleContent(page_name=original_page)
+
+            # 显示完成消息
+            create_info_dialog(self.tr(f'All results saved successfully!'))
+
+        except Exception as e:
+            create_error_dialog(e, self.tr('Failed to save all results'))
+            LOGGER.error(f"Error in on_save_all_results: {e}")
 
     def shortcutNext(self):
         sender: QShortcut = self.sender()

@@ -399,10 +399,19 @@ class TitleBar(Widget):
         runAction = QAction(self.tr('Run'), self)
         runWoUpdateTextStyle = QAction(self.tr('Run without update textstyle'), self)
         translatePageAction = QAction(self.tr('Translate page'), self)
+
+        # 新增：保存所有结果
+        saveAllResultsAction = QAction(self.tr('Save All Results'), self)
+        # saveAllResultsAction.setShortcut(QKeySequence('Ctrl+S'))
+        self.save_all_results_trigger = saveAllResultsAction.triggered
+
         runMenu = QMenu(self.runToolBtn)
         runMenu.addActions(stageActions)
         runMenu.addSeparator()
         runMenu.addActions([runAction, runWoUpdateTextStyle, translatePageAction])
+        runMenu.addSeparator()
+        runMenu.addAction(saveAllResultsAction)
+
         self.runToolBtn.setMenu(runMenu)
         self.runToolBtn.setPopupMode(QToolButton.InstantPopup)
         self.run_trigger = runAction.triggered
