@@ -544,7 +544,7 @@ class FontFormatPanel(Widget):
                 if self.textblk_item is not None:
                     # Save all format properties including gradient state
                     self.textblk_item.fontformat = copy.deepcopy(C.active_format)
-                self.textblk_item = None
+                    self.textblk_item = None
                 self.set_active_format(self.global_format, multi_select)
                 self.set_globalfmt_title()
             

@@ -994,6 +994,8 @@ class SceneTextManager(QObject):
                 blk_item.setCacheMode(QGraphicsItem.CacheMode.NoCache)
             self.canvas.gv.ensureVisible(blk_item)
             self.txtblkShapeControl.setBlkItem(blk_item)
+            if len(self.textEditList.checked_list) <= 1:
+                self.formatpanel.set_textblk_item(blk_item)
 
     def on_textedit_redo(self):
         self.canvas.redo_textedit()
@@ -1051,6 +1053,11 @@ class SceneTextManager(QObject):
 
     def apply_fontformat(self, fontformat: FontFormat):
         selected_blks = self.canvas.selected_text_items()
+        
+        # 增加的 fallback 逻辑：如果画布上没有选中对象，但样式面板当前正在专注编辑某个文本框，则将应用目标指向该文本框
+        if len(selected_blks) == 0 and not self.formatpanel.global_mode() and self.formatpanel.textblk_item is not None:
+            selected_blks = [self.formatpanel.textblk_item]
+
         trans_widget_list = []
         for blk in selected_blks:
             trans_widget_list.append(self.pairwidget_list[blk.idx].e_trans)
@@ -1061,7 +1068,7 @@ class SceneTextManager(QObject):
                     self.formatpanel.deactivate_style_label()
                 self.formatpanel.on_active_textstyle_label_changed()
             else:
-                self.formatpanel.set_active_format(fontformat)
+                self.formatpanel.set_active_format(fontformat.deepcopy())
 
     def on_transwidget_selection_changed(self):
         selitems = self.canvas.selected_text_items()
@@ -1075,6 +1082,19 @@ class SceneTextManager(QObject):
         for idx in selset:
             self.textblk_item_list[idx].setSelected(True)
         self.canvas.block_selection_signal = False
+
+        if self.canvas.textEditMode():
+            checked_list = self.textEditList.checked_list
+            if len(checked_list) == 1:
+                self.formatpanel.set_textblk_item(self.textblk_item_list[checked_list[0].idx])
+            elif len(checked_list) > 1:
+                self.formatpanel.set_textblk_item(multi_select=True)
+            else:
+                fw = self.app.focusWidget()
+                if hasattr(fw, 'idx') and isinstance(fw, (SourceTextEdit, TransTextEdit)):
+                    self.formatpanel.set_textblk_item(self.textblk_item_list[fw.idx])
+                else:
+                    self.formatpanel.set_textblk_item(None)
 
     def on_textedit_list_focusout(self):
         fw = self.app.focusWidget()

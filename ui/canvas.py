@@ -370,6 +370,10 @@ class Canvas(QGraphicsScene):
                 if blk_item.isSelected():
                     blk_item.setSelected(False)
 
+            shape_ctrl_visible = self.txtblkShapeControl.isVisible()
+            if shape_ctrl_visible:
+                self.txtblkShapeControl.hide()  # 渲染前隐藏控制框
+
             result = ndarray2pixmap(self.imgtrans_proj.inpainted_array, return_qimg=True)
             canvas_sz = self.img_window_size()
             painter = QPainter(result)
@@ -378,6 +382,9 @@ class Canvas(QGraphicsScene):
             rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
             self.render(painter, rect, rect)
             painter.end()
+
+            if shape_ctrl_visible:
+                self.txtblkShapeControl.show()  # 渲染后恢复显示
 
             if tlayer_opacity_before != 1:
                 self.textLayer.setOpacity(tlayer_opacity_before)
