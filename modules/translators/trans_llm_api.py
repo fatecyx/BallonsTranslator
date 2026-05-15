@@ -446,14 +446,23 @@ class LLM_API_Translator(BaseTranslator):
             self.logger.error(f"API request failed: {e}")
             raise
 
-        if (
-            completion.choices
+        raw_content = None
+        if isinstance(completion, str):
+            self.logger.error(f"API returned an unexpected string instead of a response object: {completion}")
+            return None
+        elif (
+            hasattr(completion, "choices")
+            and completion.choices
             and completion.choices[0].message
             and completion.choices[0].message.content
         ):
             raw_content = completion.choices[0].message.content
-            json_to_parse = raw_content.strip()
+        else:
+            self.logger.warning("No valid message content in API response.")
+            return None
 
+        if raw_content:
+            json_to_parse = raw_content.strip()
             match = re.search(
                 r"```(?:json)?\s*(\{.*?\})\s*```", json_to_parse, re.DOTALL
             )
@@ -509,9 +518,6 @@ class LLM_API_Translator(BaseTranslator):
                     )
                     self.logger.debug(f"Raw JSON content from API: {raw_content}")
                     raise
-        else:
-            self.logger.warning("No valid message content in API response.")
-            return None
 
         if hasattr(completion, "usage") and completion.usage:
             self.token_count += completion.usage.total_tokens
@@ -583,6 +589,14 @@ class LLM_API_Translator(BaseTranslator):
                     time.sleep(self.retry_timeout / 2)
 
                 except RETRYABLE_EXCEPTIONS as e:
+                    # Check for HOSTNAME_NOT_FOUND which is a configuration error, not a transient one
+                    if isinstance(e, openai.NotFoundError) and "HOSTNAME_NOT_FOUND" in str(e):
+                        self.logger.error(
+                            f"Fatal Error: Hostname not found (404). Please check your endpoint configuration. Error: {e}"
+                        )
+                        translations.extend([f"[ERROR: Hostname Not Found]"] * num_src)
+                        break
+
                     api_retry_attempt += 1
                     self.logger.warning(
                         f"API Error (retryable): {type(e).__name__} - {e}. Attempt {api_retry_attempt}/{self.retry_attempts}."
