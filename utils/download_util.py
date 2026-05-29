@@ -1,5 +1,6 @@
 import math
 import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 import errno
 import traceback
 import re
@@ -117,6 +118,8 @@ def download_url_to_file(
     hash_prefix: Optional[str] = None,
     progress: bool = True
 ) -> None:
+    if "://huggingface.co" in url:
+        url = url.replace("://huggingface.co", "://hf-mirror.com")
     r"""Download object at the given URL to a local path.
 
     Args:
@@ -273,6 +276,9 @@ def try_download_files(url: str,
                 download_url = url + osp.basename(file)
             else:
                 download_url = url
+
+            if "://huggingface.co" in download_url:
+                download_url = download_url.replace("://huggingface.co", "://hf-mirror.com")
 
             if gdrive_file_id is not None:
                 download_file_from_google_drive(gdrive_file_id, savep)
