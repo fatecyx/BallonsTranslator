@@ -853,7 +853,7 @@ class Canvas(QGraphicsScene):
     def on_paste(self, p: QPointF = None):
         if self.textEditMode():
             if p is None:
-                p = self.scene_cursor_pos()
+                p = QPointF(0, 0)
             if self.have_selected_blkitem:
                 self.paste2selected_textitems.emit()
             else:

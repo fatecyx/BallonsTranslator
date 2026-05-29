@@ -657,6 +657,9 @@ class SceneTextManager(QObject):
         textlist = []
         for blkitem in selected_blks:
             blk = copy.deepcopy(blkitem.blk)
+            blk._orig_xyxy = copy.deepcopy(blk.xyxy)
+            blk._orig_lines = copy.deepcopy(blk.lines)
+            blk._orig_bounding_rect = copy.deepcopy(blk._bounding_rect)
             blk.adjust_pos(-pos_x, -pos_y)
             self.canvas.clipboard_blks.append(blk)
             textlist.append(blkitem.toPlainText().strip())
@@ -665,16 +668,22 @@ class SceneTextManager(QObject):
 
 
     def onPasteBlkItems(self, pos: QPointF):
-        if pos is None:
-            pos_x, pos_y = 0, 0
-        else:
-            pos_x, pos_y = pos.x(), pos.y()
-            pos_x = int(pos_x / self.canvas.scale_factor)
-            pos_y = int(pos_y / self.canvas.scale_factor)
         blkitem_list, pair_widget_list = [], []
         for blk in self.canvas.clipboard_blks:
             blk = copy.deepcopy(blk)
-            blk.adjust_pos(pos_x, pos_y)
+            if hasattr(blk, '_orig_xyxy') and hasattr(blk, '_orig_lines'):
+                blk.xyxy = blk._orig_xyxy
+                blk.lines = blk._orig_lines
+                if hasattr(blk, '_orig_bounding_rect'):
+                    blk._bounding_rect = blk._orig_bounding_rect
+            else:
+                if pos is None:
+                    pos_x, pos_y = 0, 0
+                else:
+                    pos_x, pos_y = pos.x(), pos.y()
+                    pos_x = int(pos_x / self.canvas.scale_factor)
+                    pos_y = int(pos_y / self.canvas.scale_factor)
+                blk.adjust_pos(pos_x, pos_y)
             blkitem = self.addTextBlock(blk)
             pairw = self.pairwidget_list[-1]
             blkitem_list.append(blkitem)
