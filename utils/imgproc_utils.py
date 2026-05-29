@@ -449,12 +449,29 @@ def rgba2rgb(img: np.ndarray) -> np.ndarray:
             # Internal images are stored in RGB order
             gray = 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
             
-            # Average gray of the foreground weighted by alpha
-            fg_alpha_sum = alpha_f[fg_mask].sum()
-            if fg_alpha_sum > 0:
-                avg_gray = np.sum(gray[fg_mask[..., 0]] * alpha_f[fg_mask]) / fg_alpha_sum
+            # Smart average: Focus on foreground pixels that are close to the transparent area
+            # (which represents text or overlays on transparent background, rather than a large opaque block)
+            trans_mask = (alpha[..., 0] == 0).astype(np.uint8)
+            if np.any(trans_mask):
+                dilated_trans = cv2.dilate(trans_mask, np.ones((5, 5), np.uint8))
+                near_trans_mask = (alpha[..., 0] > 0) & (dilated_trans > 0)
             else:
-                avg_gray = 127
+                near_trans_mask = np.zeros_like(trans_mask, dtype=bool)
+
+            # If we found pixels near transparent area, calculate average gray over them
+            if np.any(near_trans_mask):
+                fg_alpha_sum = alpha_f[near_trans_mask, 0].sum()
+                if fg_alpha_sum > 0:
+                    avg_gray = np.sum(gray[near_trans_mask] * alpha_f[near_trans_mask, 0]) / fg_alpha_sum
+                else:
+                    avg_gray = 127
+            else:
+                # Fallback to the entire foreground average
+                fg_alpha_sum = alpha_f[fg_mask].sum()
+                if fg_alpha_sum > 0:
+                    avg_gray = np.sum(gray[fg_mask[..., 0]] * alpha_f[fg_mask]) / fg_alpha_sum
+                else:
+                    avg_gray = 127
             
             # If the foreground is bright (e.g. white text), blend onto a black background
             # If the foreground is dark (e.g. black text), blend onto a white background
