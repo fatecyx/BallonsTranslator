@@ -7,6 +7,7 @@ from collections import OrderedDict
 
 from utils.textblock import TextBlock
 from utils.proj_imgtrans import ProjImgTrans
+from utils.imgproc_utils import rgba2rgb
 
 from utils.registry import Registry
 TEXTDETECTORS = Registry('textdetectors')
@@ -42,8 +43,7 @@ class TextDetectorBase(BaseModule):
             self.load_model()
         
         # All text detectors only support 3 channels input 
-        if img.ndim == 3 and img.shape[2] == 4:
-            img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+        img = rgba2rgb(img)
 
         mask, blk_list = self._detect(img, proj)
         for blk in blk_list:

@@ -410,4 +410,55 @@ def get_block_mask(xywh: List, mask_array: np.ndarray, angle: int):
             msk = mask_array[y1: y2, x1: x2]
 
     return msk, [x1, y1, x2, y2]
+
+
+def rgba2rgb(img: np.ndarray) -> np.ndarray:
+    """
+    Robustly convert an RGBA image to an RGB image.
+    If the image has a transparent background, we composition the foreground
+    onto a background color (black or white) that provides high contrast
+    against the text/foreground pixels.
+    """
+    if img.ndim == 3 and img.shape[-1] == 4:
+        alpha = img[..., 3:4]
+        # If the image is fully opaque, just drop the alpha channel
+        if np.all(alpha == 255):
+            return np.ascontiguousarray(img[..., :3])
+        
+        # Calculate a mask for foreground pixels (alpha > 0)
+        fg_mask = alpha > 0
+        if np.any(fg_mask):
+            rgb = img[..., :3]
+            # Convert to float for calculation
+            alpha_f = alpha.astype(np.float32) / 255.0
+            
+            # Grayscale brightness (standard ITU-R BT.601 luma)
+            # R*0.299 + G*0.587 + B*0.114
+            # Internal images are stored in RGB order
+            gray = 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
+            
+            # Average gray of the foreground weighted by alpha
+            fg_alpha_sum = alpha_f[fg_mask].sum()
+            if fg_alpha_sum > 0:
+                avg_gray = np.sum(gray[fg_mask[..., 0]] * alpha_f[fg_mask]) / fg_alpha_sum
+            else:
+                avg_gray = 127
+            
+            # If the foreground is bright (e.g. white text), blend onto a black background
+            # If the foreground is dark (e.g. black text), blend onto a white background
+            if avg_gray > 127:
+                bg_color = np.array([0, 0, 0], dtype=np.float32)
+            else:
+                bg_color = np.array([255, 255, 255], dtype=np.float32)
+        else:
+            # If everything is fully transparent, just use a white background
+            bg_color = np.array([255, 255, 255], dtype=np.float32)
+            alpha_f = alpha.astype(np.float32) / 255.0
+            rgb = img[..., :3]
+        
+        # Blend the image with the background color
+        blended = rgb.astype(np.float32) * alpha_f + bg_color * (1.0 - alpha_f)
+        return np.clip(blended, 0, 255).astype(np.uint8)
+    return img
+
         

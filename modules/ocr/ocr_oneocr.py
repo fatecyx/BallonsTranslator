@@ -13,6 +13,7 @@ from contextlib import contextmanager
 import logging
 
 from .base import register_OCR, OCRBase, TextBlock
+from utils.imgproc_utils import rgba2rgb
 
 
 ONE_OCR_PATH = os.path.join("data", "models", "one-ocr")
@@ -358,7 +359,7 @@ class OCROneAPI(OCRBase):
             elif img_to_process.shape[2] == 3:
                 img_rgb = img_to_process
             elif img_to_process.shape[2] == 4:
-                img_rgb = cv2.cvtColor(img_to_process, cv2.COLOR_RGBA2RGB)
+                img_rgb = rgba2rgb(img_to_process)
             else:
                 raise ValueError(
                     f"Unsupported channels: {img_to_process.shape[2]}")

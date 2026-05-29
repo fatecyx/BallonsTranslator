@@ -15,6 +15,13 @@ def apply_shadow_effect(img: Union[QPixmap, QImage, np.ndarray], color: QColor, 
     if not isinstance(img, np.ndarray):
         img = pixmap2ndarray(img, keep_alpha=True)
 
+    # Handle case where pixmap2ndarray returns None
+    if img is None:
+        # Return empty pixmap and arrays as fallback
+        empty_pixmap = QPixmap(1, 1)
+        empty_pixmap.fill(QColor(0, 0, 0, 0))
+        return empty_pixmap, np.array([], dtype=np.uint8)
+
     mask = img[..., -1].copy()
     ksize = radius * 2 + 1
     mask = cv2.GaussianBlur(mask, (ksize, ksize), ksize / 6)

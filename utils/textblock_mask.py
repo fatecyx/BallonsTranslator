@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from typing import Tuple
-from .imgproc_utils import draw_connected_labels
+from .imgproc_utils import draw_connected_labels, rgba2rgb
 from .stroke_width_calculator import strokewidth_check
 
 opencv_inpaint = lambda img, mask: cv2.inpaint(img, mask, 3, cv2.INPAINT_NS)
@@ -52,8 +52,7 @@ def letter_calculator(img, mask, bground_rgb, show_process=False):
 # 预处理让文本颜色提取准确点
 def usm(src):
     # Handle RGBA images by converting to RGB for processing
-    if len(src.shape) == 3 and src.shape[2] == 4:
-        src = cv2.cvtColor(src, cv2.COLOR_RGBA2RGB)
+    src = rgba2rgb(src)
         
     blur_img = cv2.GaussianBlur(src, (0, 0), 5)
     usm = cv2.addWeighted(src, 1.5, blur_img, -0.5, 0)
@@ -106,9 +105,7 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, **kwargs):
     orih, oriw = img.shape[0], img.shape[1]
     
     # Handle RGBA images by converting to RGB for processing
-    if len(img.shape) == 3 and img.shape[2] == 4:
-        # Convert RGBA to RGB for processing
-        img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+    img = rgba2rgb(img)
     scaleR = 1
     if orih > 300 and oriw > 300:
         scaleR = 0.6
@@ -220,9 +217,7 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, **kwargs):
 def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_strokewidth_check=0, **kwargs):
 
     # Handle RGBA images by converting to RGB for processing
-    if len(img.shape) == 3 and img.shape[2] == 4:
-        # Convert RGBA to RGB for processing
-        img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+    img = rgba2rgb(img)
 
     # 寻找最可能是气泡的外轮廓mask
     def find_outermask(img):
@@ -368,8 +363,7 @@ def extract_ballon_mask(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, 
     return ballon mask & non text mask
     '''
     # Handle RGBA images by converting to RGB for processing
-    if len(img.shape) == 3 and img.shape[2] == 4:
-        img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+    img = rgba2rgb(img)
         
     img = cv2.GaussianBlur(img,(3,3),cv2.BORDER_DEFAULT)
     h, w = img.shape[:2]

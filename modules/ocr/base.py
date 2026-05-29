@@ -1,10 +1,12 @@
 from typing import Tuple, List, Dict, Union, Callable
 import numpy as np
 import cv2
+import os
 from collections import OrderedDict
 
 from utils.textblock import TextBlock
 from utils.registry import Registry
+from utils.imgproc_utils import rgba2rgb
 OCR = Registry('OCR')
 register_OCR = OCR.register_module
 
@@ -29,8 +31,7 @@ class OCRBase(BaseModule):
         if not self.all_model_loaded():
             self.load_model()
 
-        if img.ndim == 3 and img.shape[-1] == 4:
-            img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+        img = rgba2rgb(img)
 
         if blk_list is None:
             text = self.ocr_img(img)
@@ -41,6 +42,32 @@ class OCRBase(BaseModule):
         for blk in blk_list:
             if self.name != 'none_ocr':
                 blk.text = []
+
+        # Save crops of current batch in logs directory for debugging
+        log_dir = os.path.abspath("logs")
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            # Remove any existing debug ocr crops to keep only the latest batch
+            for filename in os.listdir(log_dir):
+                if filename.startswith("ocr_crop_") and filename.endswith(".png"):
+                    try:
+                        os.remove(os.path.join(log_dir, filename))
+                    except Exception:
+                        pass
+            
+            im_h, im_w = img.shape[:2]
+            for idx, blk in enumerate(blk_list):
+                x1, y1, x2, y2 = blk.xyxy
+                if 0 <= y1 < y2 <= im_h and 0 <= x1 < x2 <= im_w:
+                    crop = img[y1:y2, x1:x2]
+                    if crop.size > 0:
+                        crop_path = os.path.join(log_dir, f"ocr_crop_{idx}.png")
+                        # The internal img is RGB, OpenCV imwrite expects BGR
+                        crop_bgr = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
+                        cv2.imwrite(crop_path, crop_bgr)
+        except Exception as e:
+            if hasattr(self, 'logger') and self.logger:
+                self.logger.warning(f"Failed to save debug OCR crops: {e}")
                 
         self._ocr_blk_list(img, blk_list, *args, **kwargs)
         for callback_name, callback in self._postprocess_hooks.items():
