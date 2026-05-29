@@ -102,7 +102,7 @@ class PaddleOCRVLManga(OCRBase):
         input_length = inputs["input_ids"].shape[1]
         generated_tokens = generated[:, input_length:]
         answer = self.processor.batch_decode(generated_tokens, skip_special_tokens=True)[0]
-        return answer.split('\n')
+        return [f"{i}\n" for i in answer.split('\n')]
 
     def _load_model(self):
         if self.model is None:
