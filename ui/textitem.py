@@ -923,18 +923,34 @@ class TextBlkItem(QGraphicsTextItem):
         dx = math.cos(rad)
         dy = math.sin(rad)
         
-        # Set gradient points with size adjustment
         rect = self.boundingRect()
         center = rect.center()
-        radius = max(rect.width(), rect.height()) * fontformat.gradient_size
-        gradient.setStart(center.x() - dx * radius, center.y() - dy * radius)
-        gradient.setFinalStop(center.x() + dx * radius, center.y() + dy * radius)
         
-        # Set gradient colors
+        # Project the bounding box size onto the gradient vector to get the exact span along the gradient direction
+        base_radius = (abs(rect.width() * dx) + abs(rect.height() * dy)) * 0.5
+        
         start_color = QColor(*fontformat.gradient_start_color)
         end_color = QColor(*fontformat.gradient_end_color)
-        gradient.setColorAt(0, start_color)
-        gradient.setColorAt(1, end_color)
+        
+        if fontformat.gradient_size < 1.0:
+            # If gradient_size < 1.0, we keep the gradient span exactly matching the bounding box (radius = base_radius),
+            # but we let the start_color persist for (1.0 - gradient_size) of the span, creating a larger start color region (e.g. more white)
+            radius = base_radius
+            gradient.setStart(center.x() - dx * radius, center.y() - dy * radius)
+            gradient.setFinalStop(center.x() + dx * radius, center.y() + dy * radius)
+            
+            gradient.setColorAt(0, start_color)
+            gradient.setColorAt(1.0 - fontformat.gradient_size, start_color)
+            gradient.setColorAt(1.0, end_color)
+        else:
+            # If gradient_size >= 1.0, we scale the radius to make the transition more gradual (standard linear gradient behavior)
+            radius = base_radius * fontformat.gradient_size
+            gradient.setStart(center.x() - dx * radius, center.y() - dy * radius)
+            gradient.setFinalStop(center.x() + dx * radius, center.y() + dy * radius)
+            
+            gradient.setColorAt(0, start_color)
+            gradient.setColorAt(1, end_color)
+            
         return gradient
 
     def setLineSpacing(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):

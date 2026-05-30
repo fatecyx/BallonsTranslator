@@ -109,7 +109,7 @@ class TextGradientGroup(QGroupBox):
         angle_layout.addWidget(self.angle_label)
         angle_layout.addWidget(self.angle_box)
 
-        self.size_box = SmallSizeComboBox([0.5, 2], 'gradient_size', self)
+        self.size_box = SmallSizeComboBox([0.1, 2], 'gradient_size', self)
         self.size_box.setToolTip(self.tr("Set Gradient Size"))
         self.size_box.param_changed.connect(self.on_param_changed)
         self.size_label = SmallSizeControlLabel(self, direction=1, text=self.tr('Size'), alignment=Qt.AlignmentFlag.AlignCenter)
