@@ -148,6 +148,7 @@ class TextBlkItem(QGraphicsTextItem):
                 cursor.setPosition(pos1)
                 cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
                 cfmt.setTextOutline(stroke_pen)
+                cfmt.setForeground(QBrush(Qt.GlobalColor.transparent))
                 if letter_spacing != 100 and not self.fontformat.vertical:
                     cfmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
                     cfmt.setFontLetterSpacing(letter_spacing)
@@ -285,6 +286,8 @@ class TextBlkItem(QGraphicsTextItem):
         self._display_rect = rect
         self.layout.setMaxSize(rect.width(), rect.height())
         self.setCenterTransform()
+        if self.fontformat.gradient_enabled:
+            self.setGradientEnabled(True, repaint_background=False)
         if repaint:
             self.repaint_background()
 
@@ -903,15 +906,43 @@ class TextBlkItem(QGraphicsTextItem):
 
     def setGradientEnabled(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
         self.fontformat.gradient_enabled = value
+
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
-        cfmt = QTextCharFormat()
+        
         if value:
             gradient = self.get_text_gradient()
-            cfmt.setForeground(gradient)
+            brush = QBrush(gradient)
         else:
-            cfmt.setForeground(QColor(*[int(c) for c in self.fontformat.frgb]))
+            brush = QBrush(QColor(*[int(c) for c in self.fontformat.frgb]))
 
-        self.set_cursor_cfmt(cursor, cfmt, True)
+        self.block_change_signal = True
+        doc = self.document()
+        block = doc.firstBlock()
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                frag = it.fragment()
+                if frag.isValid():
+                    pos = frag.position()
+                    length = frag.length()
+                    cfmt = frag.charFormat()
+                    cfmt.setForeground(brush)
+                    
+                    select_cursor = QTextCursor(doc)
+                    select_cursor.setPosition(pos)
+                    select_cursor.setPosition(pos + length, QTextCursor.MoveMode.KeepAnchor)
+                    select_cursor.setCharFormat(cfmt)
+                it += 1
+            
+            # Also merge block char format
+            block_cursor = QTextCursor(block)
+            b_cfmt = block_cursor.blockCharFormat()
+            b_cfmt.setForeground(brush)
+            block_cursor.setBlockCharFormat(b_cfmt)
+            
+            block = block.next()
+        self.block_change_signal = False
+
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 
     def get_text_gradient(self, fontformat: FontFormat = None):
@@ -1202,5 +1233,7 @@ class TextBlkItem(QGraphicsTextItem):
             pos_shift = pos_shift + QPointF(dx, dy)
 
         self.setPos(self.pos() + pos_shift)
+        if self.fontformat.gradient_enabled:
+            self.setGradientEnabled(True, repaint_background=False)
         if self.blk is not None and set_blk_size:
             self.blk._bounding_rect = self.absBoundingRect()
