@@ -137,14 +137,21 @@ class TextBlkItem(QGraphicsTextItem):
         stroke_pen = QPen(self.stroke_qcolor, 0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         letter_spacing = self.fontformat.letter_spacing * 100
         while block.isValid():
+            frags_data = []
             it = block.begin()
             while not it.atEnd():
                 fragment = it.fragment()
-                cfmt = fragment.charFormat()
+                if fragment.isValid():
+                    cfmt = fragment.charFormat()
+                    pos1 = fragment.position()
+                    length = fragment.length()
+                    frags_data.append((pos1, length, cfmt))
+                it += 1
+            
+            for pos1, length, cfmt in frags_data:
                 sw = pt2px(cfmt.fontPointSize()) * self.fontformat.stroke_width
                 stroke_pen.setWidthF(sw)
-                pos1 = fragment.position()
-                pos2 = pos1 + fragment.length()
+                pos2 = pos1 + length
                 cursor.setPosition(pos1)
                 cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
                 cfmt.setTextOutline(stroke_pen)
@@ -153,7 +160,7 @@ class TextBlkItem(QGraphicsTextItem):
                     cfmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
                     cfmt.setFontLetterSpacing(letter_spacing)
                 cursor.mergeCharFormat(cfmt)
-                it += 1
+                
             block = block.next()
 
         layout = VerticalTextDocumentLayout(doc, self.fontformat) if self.fontformat.vertical \
@@ -854,16 +861,22 @@ class TextBlkItem(QGraphicsTextItem):
         sel_end = cursor.selectionEnd()
         block = doc.firstBlock()
         while block.isValid():
+            frags_data = []
             it = block.begin()
             while not it.atEnd():
                 fragment = it.fragment()
-                
-                frag_start = fragment.position()
-                frag_end = frag_start + fragment.length()
+                if fragment.isValid():
+                    cfmt = fragment.charFormat()
+                    frag_start = fragment.position()
+                    length = fragment.length()
+                    frags_data.append((frag_start, length, cfmt))
+                it += 1
+            
+            for frag_start, length, cfmt in frags_data:
+                frag_end = frag_start + length
                 pos2 = min(frag_end, sel_end)
                 pos1 = max(frag_start, sel_start)
                 if pos1 < pos2:
-                    cfmt = fragment.charFormat()
                     under_line = cfmt.fontUnderline()
                     cfont = cfmt.font()
                     font = QFont(value, cfont.pointSize(), cfont.weight(), cfont.italic())
@@ -876,7 +889,7 @@ class TextBlkItem(QGraphicsTextItem):
                     cursor.setPosition(pos1)
                     cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
                     cursor.setCharFormat(cfmt)
-                it += 1
+                    
             block = block.next()
 
         cfmt = cursor.charFormat()
@@ -919,6 +932,7 @@ class TextBlkItem(QGraphicsTextItem):
         doc = self.document()
         block = doc.firstBlock()
         while block.isValid():
+            frags_data = []
             it = block.begin()
             while not it.atEnd():
                 frag = it.fragment()
@@ -926,13 +940,15 @@ class TextBlkItem(QGraphicsTextItem):
                     pos = frag.position()
                     length = frag.length()
                     cfmt = frag.charFormat()
-                    cfmt.setForeground(brush)
-                    
-                    select_cursor = QTextCursor(doc)
-                    select_cursor.setPosition(pos)
-                    select_cursor.setPosition(pos + length, QTextCursor.MoveMode.KeepAnchor)
-                    select_cursor.setCharFormat(cfmt)
+                    frags_data.append((pos, length, cfmt))
                 it += 1
+            
+            for pos, length, cfmt in frags_data:
+                cfmt.setForeground(brush)
+                select_cursor = QTextCursor(doc)
+                select_cursor.setPosition(pos)
+                select_cursor.setPosition(pos + length, QTextCursor.MoveMode.KeepAnchor)
+                select_cursor.setCharFormat(cfmt)
             
             # Also merge block char format
             block_cursor = QTextCursor(block)
@@ -1054,19 +1070,26 @@ class TextBlkItem(QGraphicsTextItem):
         cursor = QTextCursor(doc)
         block = doc.firstBlock()
         while block.isValid():
+            frags_data = []
             it = block.begin()
             while not it.atEnd():
                 fragment = it.fragment()
-                old_font_size = fragment.charFormat().fontPointSize()
-                new_font_size = round(old_font_size * value,2)
-                cfmt = fragment.charFormat()
+                if fragment.isValid():
+                    cfmt = fragment.charFormat()
+                    pos1 = fragment.position()
+                    length = fragment.length()
+                    frags_data.append((pos1, length, cfmt))
+                it += 1
+                
+            for pos1, length, cfmt in frags_data:
+                old_font_size = cfmt.fontPointSize()
+                new_font_size = round(old_font_size * value, 2)
                 cfmt.setFontPointSize(new_font_size)
-                pos1 = fragment.position()
-                pos2 = pos1 + fragment.length()
+                pos2 = pos1 + length
                 cursor.setPosition(pos1)
                 cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
                 cursor.mergeCharFormat(cfmt)
-                it += 1
+                
             block = block.next()
         self.layout.relayout_on_changed = True
         self.layout.reLayoutEverything()
