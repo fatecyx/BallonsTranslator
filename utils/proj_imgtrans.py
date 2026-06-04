@@ -268,6 +268,7 @@ class ProjImgTrans:
         if imgname is not None:
             if imgname not in self.pages:
                 raise ImgnameNotInProjectException
+            LOGGER.info(f"Switching current image to: {imgname}")
             self.current_img = imgname
             img_path = self.current_img_path()
             mask_path = self.get_mask_path(get_last_modified=True)
@@ -280,7 +281,9 @@ class ProjImgTrans:
             self.inpainted_array = self.load_inpainted_by_imgname(imgname)
             if self.inpainted_array is None:
                 self.inpainted_array = np.copy(self.img_array)
+            LOGGER.info(f"Successfully loaded image {imgname} (shape: {self.img_array.shape}), mask exists: {osp.exists(mask_path)}, inpainted exists: {self.inpainted_array is not None}")
         else:
+            LOGGER.info("Setting current image to None")
             self.current_img = None
             self.img_array = None
             self.mask_array = None

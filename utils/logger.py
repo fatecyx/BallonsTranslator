@@ -114,3 +114,12 @@ logging.setLoggerClass(ColoredLogger)
 logger = logging.getLogger('BallonTranslator')
 logger.setLevel(logging.DEBUG)
 logger.propagate = False
+
+import sys
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.critical("Unhandled exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+sys.excepthook = handle_exception

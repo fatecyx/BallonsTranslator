@@ -477,6 +477,8 @@ class MainWindow(mainwindow_cls):
         self.textPanel.formatpanel.familybox.update_font_list(font_list)
 
     def openDir(self, directory: str):
+        from utils.logger import logger
+        logger.info(f"openDir: directory={directory}")
         try:
             self.opening_dir = True
             # 在加载项目前检查并生成TIF文件的预览图
@@ -534,6 +536,8 @@ class MainWindow(mainwindow_cls):
             create_error_dialog(e, self.tr('Failed to load project from') + json_path)
         
     def updatePageList(self):
+        from utils.logger import logger
+        logger.info(f"updatePageList: total pages={len(self.imgtrans_proj.pages)}")
         if self.pageList.count() != 0:
             self.pageList.clear()
         if len(self.imgtrans_proj.pages) >= shared.PAGELIST_THUMBNAIL_MAXNUM:
@@ -610,6 +614,8 @@ class MainWindow(mainwindow_cls):
 
     def pageListCurrentItemChanged(self):
         item = self.pageList.currentItem()
+        from utils.logger import logger
+        logger.info(f"pageListCurrentItemChanged: selected item={item.text() if item is not None else None}")
         self.page_changing = True
         if item is not None:
             if self.save_on_page_changed:

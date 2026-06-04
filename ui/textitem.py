@@ -126,6 +126,8 @@ class TextBlkItem(QGraphicsTextItem):
             self.update()
 
     def paint_stroke(self, painter: QPainter):
+        from utils.logger import logger
+        logger.debug(f"paint_stroke: idx={self.idx}, stroke_width={self.fontformat.stroke_width}")
         doc = QTextDocument()
         doc.setUndoRedoEnabled(False)
         doc.setDocumentMargin(self.document().documentMargin())
@@ -215,6 +217,8 @@ class TextBlkItem(QGraphicsTextItem):
         self.doc_size_changed.emit(self.idx)
 
     def initTextBlock(self, blk: TextBlock = None, set_format=True):
+        from utils.logger import logger
+        logger.debug(f"initTextBlock: idx={self.idx}, set_format={set_format}")
         self.blk = blk
         self.fontformat = blk.fontformat
         if blk is None:
@@ -918,6 +922,8 @@ class TextBlkItem(QGraphicsTextItem):
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 
     def setGradientEnabled(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        from utils.logger import logger
+        logger.debug(f"setGradientEnabled: value={value}, idx={self.idx}")
         self.fontformat.gradient_enabled = value
 
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
