@@ -112,6 +112,8 @@ check_local_file_hash = True
 
 FONT_FAMILIES: set = None
 CUSTOM_FONTS = []
+FONT_DISPLAY_NAME_MAP = {}
+FONT_INTERNAL_NAME_MAP = {}
 pbar = {}
 runtime_widget_set = set()
 

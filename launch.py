@@ -255,10 +255,18 @@ def main():
     # Fonts
     # Load custom fonts if they exist
     if osp.exists(PATH_FONTS):
+        from utils.io_utils import get_font_chinese_name
         for fp in find_all_files_recursive(PATH_FONTS, FONT_EXTS):
             fnt_idx = QFontDatabase.addApplicationFont(fp)
             if fnt_idx >= 0:
-                shared.CUSTOM_FONTS.append(QFontDatabase.applicationFontFamilies(fnt_idx)[0])
+                families = QFontDatabase.applicationFontFamilies(fnt_idx)
+                if families:
+                    english_name = families[0]
+                    chinese_name = get_font_chinese_name(fp)
+                    if chinese_name:
+                        shared.FONT_DISPLAY_NAME_MAP[english_name] = chinese_name
+                        shared.FONT_INTERNAL_NAME_MAP[chinese_name] = english_name
+                    shared.CUSTOM_FONTS.append(english_name)
 
     if sys.platform == 'win32' and (args.headless or args.headless_continuous):
         # font database does not initialise on windows with qpa -offscreen:

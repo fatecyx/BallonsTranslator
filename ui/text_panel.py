@@ -212,31 +212,63 @@ class FontFamilyComboBox(QFontComboBox):
     def __init__(self, emit_if_focused=True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.currentFontChanged.connect(self.on_fontfamily_changed)
+        self.currentTextChanged.connect(self.on_fontfamily_changed)
         self.lineedit = lineedit = LineEdit(parent=self)
         lineedit.return_pressed.connect(self.on_return_pressed)
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
         self.return_pressed = False
         
+    def currentText(self) -> str:
+        display_text = super().currentText()
+        return shared.FONT_INTERNAL_NAME_MAP.get(display_text, display_text)
+
+    def setCurrentText(self, text: str):
+        display_text = shared.FONT_DISPLAY_NAME_MAP.get(text, text)
+        super().setCurrentText(display_text)
+
     def apply_fontfamily(self):
-        ffamily = self.currentFont().family()
-        if ffamily in shared.FONT_FAMILIES:
+        ffamily = self.currentText()
+        in_families = ffamily in shared.FONT_FAMILIES
+        in_custom = ffamily in shared.CUSTOM_FONTS
+        is_valid = in_families or in_custom
+        if is_valid:
             self.param_changed.emit('font_family', ffamily)
+        else:
+            from utils.logger import logger as LOGGER
+            LOGGER.warning(f"[FontFamilyComboBox] Font '{ffamily}' is not recognized in FONT_FAMILIES or CUSTOM_FONTS.")
 
     def update_font_list(self, font_list):
-        self.currentFontChanged.disconnect(self.on_fontfamily_changed)
+        try:
+            self.currentFontChanged.disconnect(self.on_fontfamily_changed)
+        except Exception:
+            pass
+        try:
+            self.currentTextChanged.disconnect(self.on_fontfamily_changed)
+        except Exception:
+            pass
+            
         current_font = self.currentFont().family()
+        display_current_font = shared.FONT_DISPLAY_NAME_MAP.get(current_font, current_font)
+        display_font_list = [shared.FONT_DISPLAY_NAME_MAP.get(f, f) for f in font_list]
+        
+        # 按照字母顺序进行排序，避免 set 无序导致的列表乱序
+        display_font_list = sorted(list(set(display_font_list)), key=lambda x: x.lower())
+        
         self.clear()
-        self.addItems(font_list)
-        self.addItems([current_font])
-        self.setCurrentText(current_font)
+        self.addItems(display_font_list)
+        if display_current_font not in display_font_list:
+            self.addItems([display_current_font])
+        self.setCurrentText(display_current_font)
+        
         self.currentFontChanged.connect(self.on_fontfamily_changed)
+        self.currentTextChanged.connect(self.on_fontfamily_changed)
 
     def on_return_pressed(self):
         self.return_pressed = True
         self.apply_fontfamily()
 
-    def on_fontfamily_changed(self):
+    def on_fontfamily_changed(self, *args):
         if self.return_pressed:
             self.return_pressed = False
         else:

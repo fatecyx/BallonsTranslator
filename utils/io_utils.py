@@ -317,3 +317,106 @@ def submit_request(url, data, exist_on_exception=True, auth=None, wait_time = 5)
         if exist_on_exception:
             exit()
     return response
+
+def get_font_chinese_name(font_path: str) -> str:
+    """
+    Parses a TrueType/OpenType/TTC font file in pure Python to extract its Chinese family name.
+    """
+    import struct
+    try:
+        with open(font_path, 'rb') as f:
+            tag = f.read(4)
+            offsets = []
+            if tag == b'ttcf':
+                # TTC file: TrueType Collection
+                f.seek(8) # skip major/minor version (total 8 bytes: 4 tag + 4 version)
+                num_fonts = struct.unpack('>I', f.read(4))[0]
+                for _ in range(num_fonts):
+                    offsets.append(struct.unpack('>I', f.read(4))[0])
+            else:
+                offsets = [0]
+            
+            for offset in offsets:
+                f.seek(offset)
+                sfnt_version = f.read(4)
+                num_tables = struct.unpack('>H', f.read(2))[0]
+                f.seek(offset + 12) # skip searchRange, entrySelector, rangeShift
+                
+                # Find the 'name' table
+                name_table_offset = None
+                name_table_length = None
+                for _ in range(num_tables):
+                    table_tag = f.read(4)
+                    checksum = f.read(4)
+                    table_offset = struct.unpack('>I', f.read(4))[0]
+                    table_length = struct.unpack('>I', f.read(4))[0]
+                    if table_tag == b'name':
+                        name_table_offset = table_offset
+                        name_table_length = table_length
+                        break
+                
+                if name_table_offset is None:
+                    continue
+                
+                # Parse the 'name' table
+                f.seek(name_table_offset)
+                format_selector = struct.unpack('>H', f.read(2))[0]
+                count = struct.unpack('>H', f.read(2))[0]
+                string_offset = struct.unpack('>H', f.read(2))[0]
+                
+                name_records = []
+                for _ in range(count):
+                    platform_id = struct.unpack('>H', f.read(2))[0]
+                    encoding_id = struct.unpack('>H', f.read(2))[0]
+                    language_id = struct.unpack('>H', f.read(2))[0]
+                    name_id = struct.unpack('>H', f.read(2))[0]
+                    length = struct.unpack('>H', f.read(2))[0]
+                    offset_in_string = struct.unpack('>H', f.read(2))[0]
+                    name_records.append((platform_id, encoding_id, language_id, name_id, length, offset_in_string))
+                
+                # Group names by language preference
+                chinese_names = []
+                for r in name_records:
+                    platform_id, encoding_id, language_id, name_id, length, offset_in_string = r
+                    # Name ID 1 is Font Family name
+                    if name_id == 1:
+                        # Check if language is Chinese: 
+                        # For platform 3 (Windows), language ID's lower 10 bits is 0x04.
+                        # For platform 1 (Macintosh), language ID 19 is Simplified Chinese, 2 is Traditional Chinese.
+                        is_chinese = False
+                        if platform_id == 3 and (language_id & 0x3FF) == 0x04:
+                            is_chinese = True
+                        elif platform_id == 1 and language_id in (19, 2):
+                            is_chinese = True
+                        
+                        if is_chinese:
+                            f.seek(name_table_offset + string_offset + offset_in_string)
+                            string_bytes = f.read(length)
+                            try:
+                                if platform_id == 3 or platform_id == 0:
+                                    # UTF-16BE
+                                    name_str = string_bytes.decode('utf-16-be')
+                                elif platform_id == 1:
+                                    if language_id == 19:
+                                        name_str = string_bytes.decode('gbk', errors='ignore')
+                                    elif language_id == 2:
+                                        name_str = string_bytes.decode('big5', errors='ignore')
+                                    else:
+                                        name_str = string_bytes.decode('utf-8', errors='ignore')
+                                else:
+                                    continue
+                                
+                                name_str = name_str.strip('\x00').strip()
+                                if name_str:
+                                    # Prioritize PRC/Simplified Chinese (language_id == 0x0804 / 2052)
+                                    if language_id == 2052 or language_id == 19:
+                                        chinese_names.insert(0, name_str)
+                                    else:
+                                        chinese_names.append(name_str)
+                            except Exception:
+                                pass
+                if chinese_names:
+                    return chinese_names[0]
+    except Exception as e:
+        LOGGER.error(f"Error parsing font Chinese name: {e}")
+    return None
