@@ -152,6 +152,59 @@ def apply_font_family(font, family_name: str):
     font.setFamily(family_name)
 
 
+def decompose_font_name(font_name: str) -> tuple:
+    if not font_name:
+        return "", ""
+        
+    # 1. Check FONT_TYPOGRAPHIC_MAP first
+    if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and shared.FONT_TYPOGRAPHIC_MAP:
+        if font_name in shared.FONT_TYPOGRAPHIC_MAP:
+            return shared.FONT_TYPOGRAPHIC_MAP[font_name]
+            
+    # 2. Check FONT_DISPLAY_NAME_MAP and FONT_INTERNAL_NAME_MAP to resolve aliases
+    display_name = font_name
+    if hasattr(shared, 'FONT_DISPLAY_NAME_MAP') and shared.FONT_DISPLAY_NAME_MAP:
+        display_name = shared.FONT_DISPLAY_NAME_MAP.get(font_name, font_name)
+        if display_name in shared.FONT_TYPOGRAPHIC_MAP:
+            return shared.FONT_TYPOGRAPHIC_MAP[display_name]
+            
+    if hasattr(shared, 'FONT_INTERNAL_NAME_MAP') and shared.FONT_INTERNAL_NAME_MAP:
+        internal_name = shared.FONT_INTERNAL_NAME_MAP.get(font_name, font_name)
+        if internal_name in shared.FONT_TYPOGRAPHIC_MAP:
+            return shared.FONT_TYPOGRAPHIC_MAP[internal_name]
+            
+    # 3. Fallback to longest prefix matching with separators
+    if shared.FONT_FAMILIES:
+        for name_to_try in (display_name, font_name):
+            longest_prefix = ""
+            for family in shared.FONT_FAMILIES:
+                if name_to_try.startswith(family) and len(name_to_try) > len(family):
+                    sep = name_to_try[len(family)]
+                    if sep in (" ", "-", "_"):
+                        if len(family) > len(longest_prefix):
+                            longest_prefix = family
+            if longest_prefix:
+                style_name = name_to_try[len(longest_prefix) + 1:]
+                return longest_prefix, style_name
+                
+    # 4. Default fallback: family is the full name, style is Regular
+    return font_name, "Regular"
+
+
+def find_gdi_font_name(family: str, style: str) -> str:
+    # 1. Look in FONT_TYPOGRAPHIC_MAP
+    if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and shared.FONT_TYPOGRAPHIC_MAP:
+        for gdi_name, (tf, ts) in shared.FONT_TYPOGRAPHIC_MAP.items():
+            if tf == family and ts == style:
+                return gdi_name
+                
+    # 2. If not found in FONT_TYPOGRAPHIC_MAP, try standard combining (with separator)
+    if style and style.lower() not in ("regular", "normal"):
+        return f"{family} {style}"
+    return family
+
+
+
 def create_qfont(family_name: str, size: float = -1, weight: int = -1, italic: bool = False):
     from qtpy.QtGui import QFont
     font = QFont()

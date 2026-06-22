@@ -8,8 +8,8 @@ from qtpy.QtGui import QFocusEvent, QMouseEvent, QTextCursor, QKeyEvent
 
 from utils import shared
 from utils import config as C
-from utils.fontformat import FontFormat, px2pt, LineSpacingType
-from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel
+from utils.fontformat import FontFormat, px2pt, LineSpacingType, decompose_font_name, find_gdi_font_name
+from .custom_widget import Widget, ColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, AlignmentChecker, QFontChecker, SizeComboBox, SizeControlLabel, ComboBox
 from .textitem import TextBlkItem
 from .text_advanced_format import TextAdvancedFormatPanel
 from .text_style_presets import TextStylePresetPanel
@@ -207,17 +207,17 @@ class FontSizeBox(QFrame):
                 self.fcombobox.setCurrentText(str(newsize)+"+")
     
 
-class FontFamilyComboBox(QFontComboBox):
+class FontFamilyComboBox(ComboBox):
     param_changed = Signal(str, object)
     def __init__(self, emit_if_focused=True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.currentFontChanged.connect(self.on_fontfamily_changed)
         self.currentTextChanged.connect(self.on_fontfamily_changed)
         self.lineedit = lineedit = LineEdit(parent=self)
         lineedit.return_pressed.connect(self.on_return_pressed)
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
         self.return_pressed = False
+        self.setEditable(True)
         
     def currentText(self) -> str:
         display_text = super().currentText()
@@ -240,17 +240,23 @@ class FontFamilyComboBox(QFontComboBox):
 
     def update_font_list(self, font_list):
         try:
-            self.currentFontChanged.disconnect(self.on_fontfamily_changed)
-        except Exception:
-            pass
-        try:
             self.currentTextChanged.disconnect(self.on_fontfamily_changed)
         except Exception:
             pass
             
-        current_font = self.currentFont().family()
+        current_font = self.currentText()
+        
+        # Map GDI font names to typographic family names
+        mapped_families = []
+        for f in font_list:
+            if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and shared.FONT_TYPOGRAPHIC_MAP:
+                if f in shared.FONT_TYPOGRAPHIC_MAP:
+                    mapped_families.append(shared.FONT_TYPOGRAPHIC_MAP[f][0])
+                    continue
+            mapped_families.append(f)
+            
         display_current_font = shared.FONT_DISPLAY_NAME_MAP.get(current_font, current_font)
-        display_font_list = [shared.FONT_DISPLAY_NAME_MAP.get(f, f) for f in font_list]
+        display_font_list = [shared.FONT_DISPLAY_NAME_MAP.get(f, f) for f in mapped_families]
         
         # 按照字母顺序进行排序，避免 set 无序导致的列表乱序
         display_font_list = sorted(list(set(display_font_list)), key=lambda x: x.lower())
@@ -261,7 +267,6 @@ class FontFamilyComboBox(QFontComboBox):
             self.addItems([display_current_font])
         self.setCurrentText(display_current_font)
         
-        self.currentFontChanged.connect(self.on_fontfamily_changed)
         self.currentTextChanged.connect(self.on_fontfamily_changed)
 
     def on_return_pressed(self):
@@ -273,6 +278,27 @@ class FontFamilyComboBox(QFontComboBox):
             self.return_pressed = False
         else:
             self.apply_fontfamily()
+
+
+class FontStyleComboBox(ComboBox):
+    param_changed = Signal(str, object)
+    def __init__(self, parent=None, *args, **kwargs) -> None:
+        super().__init__(parent, *args, **kwargs)
+        self.currentTextChanged.connect(self.on_style_changed)
+        self.block_emit = False
+        self.family_box = None
+
+    def set_family_box(self, family_box: FontFamilyComboBox):
+        self.family_box = family_box
+
+    def on_style_changed(self, style_name: str):
+        if self.block_emit or not style_name or not self.family_box:
+            return
+        family_name = self.family_box.currentText()
+        if not family_name:
+            return
+        combined_name = find_gdi_font_name(family_name, style_name)
+        self.param_changed.emit('font_family', combined_name)
 
 
 class FontFormatPanel(Widget):
@@ -292,8 +318,16 @@ class FontFormatPanel(Widget):
         self.familybox.setContentsMargins(0, 0, 0, 0)
         self.familybox.setObjectName("FontFamilyBox")
         self.familybox.setToolTip(self.tr("Font Family"))
-        self.familybox.param_changed.connect(self.on_param_changed)
+        self.familybox.param_changed.connect(self.on_family_changed_in_ui)
         self.familybox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        self.stylebox = FontStyleComboBox(parent=self)
+        self.stylebox.setContentsMargins(0, 0, 0, 0)
+        self.stylebox.setObjectName("FontStyleBox")
+        self.stylebox.setToolTip(self.tr("Font Style"))
+        self.stylebox.set_family_box(self.familybox)
+        self.stylebox.param_changed.connect(self.on_param_changed)
+        self.stylebox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self.fontsizebox = FontSizeBox(self)
         self.fontsizebox.setToolTip(self.tr("Font Size"))
@@ -411,9 +445,8 @@ class FontFormatPanel(Widget):
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
         hl1.addWidget(self.familybox)
+        hl1.addWidget(self.stylebox)
         hl1.addWidget(self.fontsizebox)
-        hl1.addWidget(self.lineSpacingLabel)
-        hl1.addWidget(self.lineSpacingBox)
         hl1.setSpacing(4)
         hl1.setContentsMargins(0, 12, 0, 0)
         hl2 = QHBoxLayout()
@@ -424,10 +457,17 @@ class FontFormatPanel(Widget):
         hl2.addWidget(self.verticalChecker)
         hl2.setSpacing(FONTFORMAT_SPACING)
         hl2.setContentsMargins(0, 0, 0, 0)
+
+        linesp_hlayout = QHBoxLayout()
+        linesp_hlayout.addWidget(self.lineSpacingLabel)
+        linesp_hlayout.addWidget(self.lineSpacingBox)
+        linesp_hlayout.setSpacing(shared.WIDGET_SPACING_CLOSE)
+
         hl3 = QHBoxLayout()
         hl3.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl3.addLayout(stroke_hlayout)
         hl3.addLayout(lettersp_hlayout)
+        hl3.addLayout(linesp_hlayout)
         hl3.setContentsMargins(3, 0, 3, 0)
         hl3.setSpacing(13)
         hl4 = QHBoxLayout()
@@ -502,9 +542,54 @@ class FontFormatPanel(Widget):
             mul = 0.01
         self.lineSpacingBox.setValue(self.lineSpacingBox.value() + delta * mul)
 
+    def update_style_options(self, family_name: str):
+        from qtpy.QtGui import QFontDatabase
+        internal_family = shared.FONT_INTERNAL_NAME_MAP.get(family_name, family_name)
+        if shared.FLAG_QT6:
+            styles = QFontDatabase.styles(internal_family)
+        else:
+            fdb = QFontDatabase()
+            styles = fdb.styles(internal_family)
+        self.stylebox.block_emit = True
+        self.stylebox.clear()
+        if styles:
+            self.stylebox.addItems(styles)
+        else:
+            self.stylebox.addItems(["Regular"])
+        self.stylebox.block_emit = False
+
+    def on_family_changed_in_ui(self, param_name: str, family_name: str):
+        prev_style = self.stylebox.currentText()
+        self.update_style_options(family_name)
+        style_options = [self.stylebox.itemText(i) for i in range(self.stylebox.count())]
+        target_style = "Regular"
+        if prev_style in style_options:
+            target_style = prev_style
+        elif "Regular" in style_options:
+            target_style = "Regular"
+        elif "Normal" in style_options:
+            target_style = "Normal"
+        elif style_options:
+            target_style = style_options[0]
+        self.stylebox.block_emit = True
+        self.stylebox.setCurrentText(target_style)
+        self.stylebox.block_emit = False
+        combined_name = find_gdi_font_name(family_name, target_style)
+        self.on_param_changed('font_family', combined_name)
+
     def set_active_format(self, font_format: FontFormat, multi_size=False):
         C.active_format = font_format
+        
+        family, style = decompose_font_name(font_format.font_family)
+        
         self.familybox.blockSignals(True)
+        self.stylebox.blockSignals(True)
+        self.familybox.setCurrentText(family)
+        self.update_style_options(family)
+        self.stylebox.setCurrentText(style)
+        self.familybox.blockSignals(False)
+        self.stylebox.blockSignals(False)
+
         font_size = round(font_format.font_size, 1)
         if int(font_size) == font_size:
             font_size = str(int(font_size))
@@ -513,7 +598,6 @@ class FontFormatPanel(Widget):
         if multi_size:
             font_size += "+"
         self.fontsizebox.fcombobox.setCurrentText(font_size)
-        self.familybox.setCurrentText(font_format.font_family)
         self.colorPicker.setPickerColor(font_format.foreground_color())
         self.strokeColorPicker.setPickerColor(font_format.stroke_color())
         self.strokeWidthBox.setValue(font_format.stroke_width)
@@ -525,7 +609,6 @@ class FontFormatPanel(Widget):
         self.formatBtnGroup.italicBtn.setChecked(font_format.italic)
         self.alignBtnGroup.setAlignment(font_format.alignment)
         
-        self.familybox.blockSignals(False)
         self.textadvancedfmt_panel.set_active_format(font_format)
 
     def set_globalfmt_title(self):
