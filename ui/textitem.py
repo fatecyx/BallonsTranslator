@@ -696,12 +696,19 @@ class TextBlkItem(QGraphicsTextItem):
         fontformat = self.fontformat.deepcopy()
         fontformat.frgb = [color.red(), color.green(), color.blue()]
         fontformat.font_weight = font.weight()
-        fontformat.font_family = font.family()
+        from utils.fontformat import find_gdi_font_name
+        fontformat.font_family = find_gdi_font_name(font.family(), font.styleName(), font.weight())
         if self.isEditing():
             fontformat.font_size = pt2px(font.pointSizeF())
         else:
             fontformat.font_size = self.minFontSize()
-        fontformat.bold = font.bold()
+        # Read the bold flag from custom property 100001
+        bold_prop = fmt.property(100001)
+        if bold_prop is not None:
+            fontformat.bold = bool(bold_prop)
+        else:
+            fontformat.bold = False
+            
         fontformat.underline = font.underline()
         fontformat.italic = font.italic()
         # Preserve gradient settings
@@ -729,10 +736,22 @@ class TextBlkItem(QGraphicsTextItem):
         font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.NoSubpixelAntialias)
 
         fweight = ffmat.font_weight
-        if fweight is  None:
+        normal_weights = (50, 400)
+        font_weight_from_family = font.weight()
+        if font_weight_from_family not in normal_weights and (fweight is None or fweight in normal_weights):
+            fweight = font_weight_from_family
+            ffmat.font_weight = fweight
+
+        if fweight is None:
+            fweight = font_weight_from_family if font_weight_from_family is not None else 400
+            ffmat.font_weight = fweight
+
+        if ffmat.bold:
+            font.setBold(True)
             fweight = font.weight()
             ffmat.font_weight = fweight
-        font.setBold(ffmat.bold)
+        else:
+            font.setWeight(fweight)
 
         self.document().setDefaultFont(font)
         format.setFont(font)
@@ -745,6 +764,7 @@ class TextBlkItem(QGraphicsTextItem):
             format.setFontWeight(fweight)
         format.setFontItalic(ffmat.italic)
         format.setFontUnderline(ffmat.underline)
+        format.setProperty(100001, ffmat.bold)
         if not ffmat.vertical:
             format.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
             format.setFontLetterSpacing(ffmat.letter_spacing * 100)
@@ -908,6 +928,51 @@ class TextBlkItem(QGraphicsTextItem):
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
         cfmt = QTextCharFormat()
         cfmt.setFontWeight(value)
+        self.set_cursor_cfmt(cursor, cfmt, True)
+        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+
+    def setFontBoldFormat(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+        cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
+        
+        current_family = cursor.charFormat().font().family()
+        cfmt = QTextCharFormat()
+        cfmt.setProperty(100001, value)
+        
+        # Get native weight of current GDI family name
+        native_weight = 400
+        import utils.shared as shared_pkg
+        if hasattr(shared_pkg, 'FONT_TYPOGRAPHIC_MAP') and shared_pkg.FONT_TYPOGRAPHIC_MAP:
+            display_name = shared_pkg.FONT_DISPLAY_NAME_MAP.get(current_family, current_family) if hasattr(shared_pkg, 'FONT_DISPLAY_NAME_MAP') else current_family
+            internal_name = shared_pkg.FONT_INTERNAL_NAME_MAP.get(current_family, current_family) if hasattr(shared_pkg, 'FONT_INTERNAL_NAME_MAP') else current_family
+            gdi_key = None
+            for k in (current_family, display_name, internal_name):
+                if k in shared_pkg.FONT_TYPOGRAPHIC_MAP:
+                    gdi_key = k
+                    break
+            if gdi_key:
+                tf, ts = shared_pkg.FONT_TYPOGRAPHIC_MAP[gdi_key]
+                style_lower = ts.lower()
+                if style_lower == "b":
+                    native_weight = 700
+                elif style_lower == "m":
+                    native_weight = 500
+                elif style_lower == "r":
+                    native_weight = 400
+                else:
+                    weight_mapping = {
+                        "thin": 100, "extralight": 200, "light": 300, "regular": 400, "normal": 400,
+                        "medium": 500, "semibold": 600, "bold": 700, "extrabold": 800, "heavy": 900, "black": 950
+                    }
+                    for kw, val in weight_mapping.items():
+                        if kw in style_lower:
+                            native_weight = val
+                            break
+                            
+        if value:
+            cfmt.setFontWeight(700)
+        else:
+            cfmt.setFontWeight(native_weight)
+            
         self.set_cursor_cfmt(cursor, cfmt, True)
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 

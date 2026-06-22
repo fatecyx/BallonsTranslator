@@ -219,19 +219,19 @@ class FontFamilyComboBox(ComboBox):
         self.return_pressed = False
         self.setEditable(True)
         
-    def currentText(self) -> str:
-        display_text = super().currentText()
-        return shared.FONT_INTERNAL_NAME_MAP.get(display_text, display_text)
-
     def setCurrentText(self, text: str):
         display_text = shared.FONT_DISPLAY_NAME_MAP.get(text, text)
         super().setCurrentText(display_text)
 
     def apply_fontfamily(self):
         ffamily = self.currentText()
-        in_families = ffamily in shared.FONT_FAMILIES
-        in_custom = ffamily in shared.CUSTOM_FONTS
+        internal_family = shared.FONT_INTERNAL_NAME_MAP.get(ffamily, ffamily)
+        in_families = internal_family in shared.FONT_FAMILIES
+        in_custom = internal_family in shared.CUSTOM_FONTS
         is_valid = in_families or in_custom
+        if not is_valid:
+            is_valid = ffamily in shared.FONT_FAMILIES or ffamily in shared.CUSTOM_FONTS
+            
         if is_valid:
             self.param_changed.emit('font_family', ffamily)
         else:
@@ -249,14 +249,20 @@ class FontFamilyComboBox(ComboBox):
         # Map GDI font names to typographic family names
         mapped_families = []
         for f in font_list:
+            display_f = shared.FONT_DISPLAY_NAME_MAP.get(f, f) if hasattr(shared, 'FONT_DISPLAY_NAME_MAP') else f
             if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and shared.FONT_TYPOGRAPHIC_MAP:
-                if f in shared.FONT_TYPOGRAPHIC_MAP:
+                if display_f in shared.FONT_TYPOGRAPHIC_MAP and shared.FONT_TYPOGRAPHIC_MAP[display_f][0]:
+                    mapped_families.append(shared.FONT_TYPOGRAPHIC_MAP[display_f][0])
+                    continue
+                elif f in shared.FONT_TYPOGRAPHIC_MAP and shared.FONT_TYPOGRAPHIC_MAP[f][0]:
                     mapped_families.append(shared.FONT_TYPOGRAPHIC_MAP[f][0])
                     continue
-            mapped_families.append(f)
+            mapped_families.append(display_f)
             
+        mapped_families = [f for f in mapped_families if f]
         display_current_font = shared.FONT_DISPLAY_NAME_MAP.get(current_font, current_font)
         display_font_list = [shared.FONT_DISPLAY_NAME_MAP.get(f, f) for f in mapped_families]
+        display_font_list = [x for x in display_font_list if x]
         
         # 按照字母顺序进行排序，避免 set 无序导致的列表乱序
         display_font_list = sorted(list(set(display_font_list)), key=lambda x: x.lower())
@@ -515,6 +521,8 @@ class FontFormatPanel(Widget):
             self.update_text_style_label()
         else:
             func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True, **func_kwargs)
+            if self.textblk_item is not None:
+                self.set_active_format(self.textblk_item.get_fontformat())
 
     def update_text_style_label(self):
         if self.global_mode():

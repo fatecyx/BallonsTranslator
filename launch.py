@@ -269,9 +269,30 @@ def main():
                     
                     props = get_font_properties(fp)
                     if props:
+                        def has_chinese(s: str) -> bool:
+                            return any(ord(c) >= 0x4e00 for c in s) if s else False
+
+                        # Heuristically derive Chinese family name if the typographic family name is empty or in English
+                        family_zh = props.get("family_zh")
+                        if (not family_zh or not has_chinese(family_zh)) and chinese_name and has_chinese(chinese_name):
+                            derived = chinese_name
+                            style_zh = props.get("style_zh") or props.get("style_en") or ""
+                            if style_zh:
+                                for sep in ("-", "_", " "):
+                                    for suffix in (sep + style_zh, sep + style_zh.lower(), sep + style_zh.upper()):
+                                        if derived.endswith(suffix):
+                                            derived = derived[:-len(suffix)].strip()
+                                            break
+                                if derived == chinese_name and derived.endswith(style_zh):
+                                    derived = derived[:-len(style_zh)].strip()
+                            props["family_zh"] = derived
+
                         shared.FONT_TYPOGRAPHIC_MAP[english_name] = (props["family_en"], props["style_en"])
                         if chinese_name:
                             shared.FONT_TYPOGRAPHIC_MAP[chinese_name] = (props["family_zh"], props["style_zh"])
+                        if props.get("family_zh"):
+                            shared.FONT_DISPLAY_NAME_MAP[props["family_en"]] = props["family_zh"]
+                            shared.FONT_INTERNAL_NAME_MAP[props["family_zh"]] = props["family_en"]
                     shared.CUSTOM_FONTS.append(english_name)
 
     if sys.platform == 'win32' and (args.headless or args.headless_continuous):

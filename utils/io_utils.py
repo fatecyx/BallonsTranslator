@@ -397,7 +397,11 @@ def get_font_chinese_name(font_path: str) -> str:
                                     # UTF-16BE
                                     name_str = string_bytes.decode('utf-16-be')
                                 elif platform_id == 1:
-                                    if language_id == 19:
+                                    if encoding_id == 2:
+                                        name_str = string_bytes.decode('big5', errors='ignore')
+                                    elif encoding_id == 25:
+                                        name_str = string_bytes.decode('gbk', errors='ignore')
+                                    elif language_id == 19:
                                         name_str = string_bytes.decode('gbk', errors='ignore')
                                     elif language_id == 2:
                                         name_str = string_bytes.decode('big5', errors='ignore')
@@ -439,8 +443,8 @@ def get_font_properties(font_path: str):
             else:
                 offsets = [0]
             
-            # For simplicity, parse the first font in TTC
-            for offset in offsets[:1]:
+            best_names = None
+            for offset in offsets:
                 f.seek(offset)
                 f.read(4) # sfnt version
                 num_tables = struct.unpack('>H', f.read(2))[0]
@@ -485,7 +489,11 @@ def get_font_properties(font_path: str):
                             if pid == 3 or pid == 0:
                                 val = b.decode('utf-16-be')
                             elif pid == 1:
-                                if lid == 19:
+                                if eid == 2:
+                                    val = b.decode('big5', errors='ignore')
+                                elif eid == 25:
+                                    val = b.decode('gbk', errors='ignore')
+                                elif lid == 19:
                                     val = b.decode('gbk', errors='ignore')
                                 elif lid == 2:
                                     val = b.decode('big5', errors='ignore')
@@ -509,12 +517,19 @@ def get_font_properties(font_path: str):
                 family_zh = names.get((16, "zh"), names.get((1, "zh"), ""))
                 style_zh = names.get((17, "zh"), names.get((2, "zh"), ""))
                 
-                return {
+                current_names = {
                     "family_en": family_en,
                     "style_en": style_en,
                     "family_zh": family_zh,
                     "style_zh": style_zh
                 }
+                if family_zh:
+                    best_names = current_names
+                    break
+                if best_names is None:
+                    best_names = current_names
+            
+            return best_names
     except Exception as e:
         LOGGER.error(f"Error parsing font properties: {e}")
     return None

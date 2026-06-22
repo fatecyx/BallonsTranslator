@@ -98,10 +98,8 @@ def ffmt_change_font_weight(param_name: str, values: str, act_ffmt: FontFormat, 
 @font_formating()
 def ffmt_change_bold(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem] = None, **kwargs):
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
-    values = [QFont.Weight.Bold if value else QFont.Weight.Normal for value in values]
-    # ffmt_change_weight('weight', values, act_ffmt, is_global, blkitems, **kwargs)
     for blkitem, value in zip(blkitems, values):
-        blkitem.setFontWeight(value, **set_kwargs)
+        blkitem.setFontBoldFormat(value, **set_kwargs)
 
 @font_formating(push_undostack=True)
 def ffmt_change_letter_spacing(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
