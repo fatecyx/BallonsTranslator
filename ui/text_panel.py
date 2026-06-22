@@ -232,6 +232,12 @@ class FontFamilyComboBox(ComboBox):
         if not is_valid:
             is_valid = ffamily in shared.FONT_FAMILIES or ffamily in shared.CUSTOM_FONTS
             
+        if not is_valid and hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and shared.FONT_TYPOGRAPHIC_MAP:
+            for gdi, (tf, ts) in shared.FONT_TYPOGRAPHIC_MAP.items():
+                if tf == internal_family or tf == ffamily:
+                    is_valid = True
+                    break
+            
         if is_valid:
             self.param_changed.emit('font_family', ffamily)
         else:
@@ -558,6 +564,24 @@ class FontFormatPanel(Widget):
         else:
             fdb = QFontDatabase()
             styles = fdb.styles(internal_family)
+            
+        styles = list(styles) if styles else []
+        
+        # If styles is empty or we have mapped typographic styles, collect them from FONT_TYPOGRAPHIC_MAP
+        if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and shared.FONT_TYPOGRAPHIC_MAP:
+            display_name = shared.FONT_DISPLAY_NAME_MAP.get(family_name, family_name) if hasattr(shared, 'FONT_DISPLAY_NAME_MAP') else family_name
+            internal_name = shared.FONT_INTERNAL_NAME_MAP.get(family_name, family_name) if hasattr(shared, 'FONT_INTERNAL_NAME_MAP') else family_name
+            typo_styles = []
+            for gdi_name, (tf, ts) in shared.FONT_TYPOGRAPHIC_MAP.items():
+                internal_tf = shared.FONT_INTERNAL_NAME_MAP.get(tf, tf) if hasattr(shared, 'FONT_INTERNAL_NAME_MAP') else tf
+                if internal_tf in (internal_family, display_name, internal_name):
+                    if ts not in typo_styles:
+                        typo_styles.append(ts)
+            if typo_styles:
+                for ts in typo_styles:
+                    if ts not in styles:
+                        styles.append(ts)
+                        
         self.stylebox.block_emit = True
         self.stylebox.clear()
         if styles:

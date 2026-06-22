@@ -311,6 +311,32 @@ def main():
         fdb = QFontDatabase()
         shared.FONT_FAMILIES = set(fdb.families())
 
+    # Auto-scan system font families for GDI-split names and register them in FONT_TYPOGRAPHIC_MAP
+    if shared.FONT_FAMILIES:
+        style_suffixes = [
+            "b", "m", "r", "l", "el", "sb", "db", "h", "k",
+            "thin", "extralight", "light", "regular", "normal", "medium", "semibold", "bold", "extrabold", "heavy", "black"
+        ]
+        separators = ["-", " ", "_"]
+        for name in shared.FONT_FAMILIES:
+            if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and name in shared.FONT_TYPOGRAPHIC_MAP:
+                continue
+            for sep in separators:
+                matched = False
+                for suffix in style_suffixes:
+                    pattern = sep + suffix
+                    if name.lower().endswith(pattern):
+                        style_len = len(pattern) - len(sep)
+                        style = name[-style_len:]
+                        family = name[:-len(pattern)]
+                        if not hasattr(shared, 'FONT_TYPOGRAPHIC_MAP'):
+                            shared.FONT_TYPOGRAPHIC_MAP = {}
+                        shared.FONT_TYPOGRAPHIC_MAP[name] = (family, style)
+                        matched = True
+                        break
+                if matched:
+                    break
+
     app_font = QFont('Microsoft YaHei UI')
     if not app_font.exactMatch() or sys.platform == 'darwin':
         app_font = app.font()
