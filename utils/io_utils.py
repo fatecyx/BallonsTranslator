@@ -420,3 +420,101 @@ def get_font_chinese_name(font_path: str) -> str:
     except Exception as e:
         LOGGER.error(f"Error parsing font Chinese name: {e}")
     return None
+
+def get_font_properties(font_path: str):
+    """
+    Parses font file to extract standard family, style, typographic family (ID 16),
+    and typographic style (ID 17).
+    """
+    import struct
+    try:
+        with open(font_path, 'rb') as f:
+            tag = f.read(4)
+            offsets = []
+            if tag == b'ttcf':
+                f.seek(8)
+                num_fonts = struct.unpack('>I', f.read(4))[0]
+                for _ in range(num_fonts):
+                    offsets.append(struct.unpack('>I', f.read(4))[0])
+            else:
+                offsets = [0]
+            
+            # For simplicity, parse the first font in TTC
+            for offset in offsets[:1]:
+                f.seek(offset)
+                f.read(4) # sfnt version
+                num_tables = struct.unpack('>H', f.read(2))[0]
+                f.seek(offset + 12)
+                
+                name_offset = None
+                for _ in range(num_tables):
+                    t_tag = f.read(4)
+                    f.read(4) # checksum
+                    t_offset = struct.unpack('>I', f.read(4))[0]
+                    t_length = struct.unpack('>I', f.read(4))[0]
+                    if t_tag == b'name':
+                        name_offset = t_offset
+                        break
+                
+                if name_offset is None:
+                    continue
+                
+                f.seek(name_offset)
+                f.read(2) # format selector
+                count = struct.unpack('>H', f.read(2))[0]
+                string_offset = struct.unpack('>H', f.read(2))[0]
+                
+                records = []
+                for _ in range(count):
+                    pid = struct.unpack('>H', f.read(2))[0]
+                    eid = struct.unpack('>H', f.read(2))[0]
+                    lid = struct.unpack('>H', f.read(2))[0]
+                    nid = struct.unpack('>H', f.read(2))[0]
+                    length = struct.unpack('>H', f.read(2))[0]
+                    off = struct.unpack('>H', f.read(2))[0]
+                    records.append((pid, eid, lid, nid, length, off))
+                
+                names = {}
+                for r in records:
+                    pid, eid, lid, nid, length, off = r
+                    if nid in (1, 2, 16, 17):
+                        f.seek(name_offset + string_offset + off)
+                        b = f.read(length)
+                        val = ""
+                        try:
+                            if pid == 3 or pid == 0:
+                                val = b.decode('utf-16-be')
+                            elif pid == 1:
+                                if lid == 19:
+                                    val = b.decode('gbk', errors='ignore')
+                                elif lid == 2:
+                                    val = b.decode('big5', errors='ignore')
+                                else:
+                                    val = b.decode('utf-8', errors='ignore')
+                            else:
+                                continue
+                        except Exception:
+                            continue
+                        val = val.strip('\x00').strip()
+                        if val:
+                            is_zh = (pid == 3 and (lid & 0x3FF) == 0x04) or (pid == 1 and lid in (19, 2))
+                            key = (nid, "zh" if is_zh else "en")
+                            if is_zh and (lid == 2052 or lid == 19):
+                                names[key] = val
+                            elif key not in names:
+                                names[key] = val
+                
+                family_en = names.get((16, "en"), names.get((1, "en"), ""))
+                style_en = names.get((17, "en"), names.get((2, "en"), ""))
+                family_zh = names.get((16, "zh"), names.get((1, "zh"), ""))
+                style_zh = names.get((17, "zh"), names.get((2, "zh"), ""))
+                
+                return {
+                    "family_en": family_en,
+                    "style_en": style_en,
+                    "family_zh": family_zh,
+                    "style_zh": style_zh
+                }
+    except Exception as e:
+        LOGGER.error(f"Error parsing font properties: {e}")
+    return None

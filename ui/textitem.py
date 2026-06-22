@@ -722,7 +722,8 @@ class TextBlkItem(QGraphicsTextItem):
         format = cursor.charFormat()
         font = self.document().defaultFont()
         
-        font.setFamily(ffmat.font_family)
+        from utils.fontformat import apply_font_family
+        apply_font_family(font, ffmat.font_family)
         font.setPointSizeF(ffmat.size_pt)
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.NoSubpixelAntialias)
@@ -858,7 +859,8 @@ class TextBlkItem(QGraphicsTextItem):
         if cursor.selectionStart() == 0 and \
             cursor.selectionEnd() == lastpos:
             font = doc.defaultFont()
-            font.setFamily(value)
+            from utils.fontformat import apply_font_family
+            apply_font_family(font, value)
             doc.setDefaultFont(font)
 
         sel_start = cursor.selectionStart()
@@ -883,9 +885,8 @@ class TextBlkItem(QGraphicsTextItem):
                 if pos1 < pos2:
                     under_line = cfmt.fontUnderline()
                     cfont = cfmt.font()
-                    font = QFont(value, cfont.pointSize(), cfont.weight(), cfont.italic())
-                    font.setPointSizeF(cfont.pointSizeF())
-                    font.setBold(font.bold())
+                    from utils.fontformat import create_qfont
+                    font = create_qfont(value, cfont.pointSizeF(), cfont.weight(), cfont.italic())
                     font.setWordSpacing(cfont.wordSpacing())
                     font.setLetterSpacing(cfont.letterSpacingType(), cfont.letterSpacing())
                     cfmt.setFont(font)
@@ -897,7 +898,10 @@ class TextBlkItem(QGraphicsTextItem):
             block = block.next()
 
         cfmt = cursor.charFormat()
-        cfmt.setFontFamily(value)
+        from utils.fontformat import create_qfont
+        cfont = cfmt.font()
+        font = create_qfont(value, cfont.pointSizeF(), cfont.weight(), cfont.italic())
+        cfmt.setFont(font)
         self.set_cursor_cfmt(cursor, cfmt)
 
     def setFontWeight(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):

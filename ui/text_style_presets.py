@@ -173,7 +173,8 @@ class TextStyleLabel(Widget):
 
     def updatePreview(self):
         font = self.stylelabel.font()
-        font.setFamily(self.fontfmt.font_family)
+        from utils.fontformat import apply_font_family
+        apply_font_family(font, self.fontfmt.font_family)
         self.stylelabel.setFont(font)
 
         d = int(self.colorw.width() * 0.66)

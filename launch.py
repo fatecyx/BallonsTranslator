@@ -255,7 +255,7 @@ def main():
     # Fonts
     # Load custom fonts if they exist
     if osp.exists(PATH_FONTS):
-        from utils.io_utils import get_font_chinese_name
+        from utils.io_utils import get_font_chinese_name, get_font_properties
         for fp in find_all_files_recursive(PATH_FONTS, FONT_EXTS):
             fnt_idx = QFontDatabase.addApplicationFont(fp)
             if fnt_idx >= 0:
@@ -266,6 +266,12 @@ def main():
                     if chinese_name:
                         shared.FONT_DISPLAY_NAME_MAP[english_name] = chinese_name
                         shared.FONT_INTERNAL_NAME_MAP[chinese_name] = english_name
+                    
+                    props = get_font_properties(fp)
+                    if props:
+                        shared.FONT_TYPOGRAPHIC_MAP[english_name] = (props["family_en"], props["style_en"])
+                        if chinese_name:
+                            shared.FONT_TYPOGRAPHIC_MAP[chinese_name] = (props["family_zh"], props["style_zh"])
                     shared.CUSTOM_FONTS.append(english_name)
 
     if sys.platform == 'win32' and (args.headless or args.headless_continuous):

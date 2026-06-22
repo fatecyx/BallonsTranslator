@@ -44,8 +44,8 @@ def vertical_force_aligncentel(char: str) -> bool:
 
 @lru_cache(maxsize=512)
 def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:
-    font = QFont(ffamily, int(size), weight, italic)
-    font.setPointSizeF(size)
+    from utils.fontformat import create_qfont
+    font = create_qfont(ffamily, size, weight, italic)
     return QFontMetricsF(font)
 
 @lru_cache(maxsize=2048)
