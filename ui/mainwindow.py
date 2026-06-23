@@ -389,8 +389,7 @@ class MainWindow(mainwindow_cls):
         self.configPanel.save_config.connect(self.save_config)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
         self.configPanel.show_only_custom_font.connect(self.on_show_only_custom_font)
-        if pcfg.let_show_only_custom_fonts_flag:
-            self.on_show_only_custom_font(True)
+        self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:

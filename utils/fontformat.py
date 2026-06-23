@@ -122,7 +122,7 @@ def apply_font_family(font, family_name: str):
         
     # Second priority: check FONT_TYPOGRAPHIC_MAP for direct font file typographic mappings
     if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and shared.FONT_TYPOGRAPHIC_MAP:
-        if family_name in shared.FONT_TYPOGRAPHIC_MAP:
+        if family_name in shared.FONT_TYPOGRAPHIC_MAP and (not shared.FONT_FAMILIES or family_name in shared.FONT_FAMILIES):
             tf, ts = shared.FONT_TYPOGRAPHIC_MAP[family_name]
             
             # If tf is not in families, but its internal English name is in families, use the English one
@@ -231,6 +231,13 @@ def decompose_font_name(font_name: str) -> tuple:
         if internal_name in shared.FONT_TYPOGRAPHIC_MAP:
             return shared.FONT_TYPOGRAPHIC_MAP[internal_name]
             
+    # 2.5 Check if font_name itself is already a valid family name in FONT_FAMILIES
+    if shared.FONT_FAMILIES:
+        for name in (display_name, font_name, internal_name if 'internal_name' in locals() else font_name):
+            if name in shared.FONT_FAMILIES:
+                display_family = shared.FONT_DISPLAY_NAME_MAP.get(name, name) if hasattr(shared, 'FONT_DISPLAY_NAME_MAP') else name
+                return display_family, "Regular"
+                
     # 3. Fallback to longest prefix matching with separators
     if shared.FONT_FAMILIES:
         for name_to_try in (display_name, font_name):

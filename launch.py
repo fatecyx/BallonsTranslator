@@ -306,17 +306,48 @@ def main():
                 fnt_idx = QFontDatabase.addApplicationFont(fp)
 
     if shared.FLAG_QT6:
-        shared.FONT_FAMILIES = set(f for f in QFontDatabase.families())
+        shared.FONT_FAMILIES = set(f for f in QFontDatabase.families() if QFontDatabase.isScalable(f))
     else:
         fdb = QFontDatabase()
-        shared.FONT_FAMILIES = set(fdb.families())
+        shared.FONT_FAMILIES = set(f for f in fdb.families() if fdb.isScalable(f))
+
+
 
     # Auto-scan system font families for GDI-split names and register them in FONT_TYPOGRAPHIC_MAP
     if shared.FONT_FAMILIES:
-        style_suffixes = [
-            "b", "m", "r", "l", "el", "sb", "db", "h", "k",
-            "thin", "extralight", "light", "regular", "normal", "medium", "semibold", "bold", "extrabold", "heavy", "black"
+        import re
+        
+        def clean_style_name(style_name: str) -> str:
+            words = style_name.split()
+            cleaned = []
+            for w in words:
+                if not cleaned or w.lower() != cleaned[-1].lower():
+                    cleaned.append(w)
+            return " ".join(cleaned)
+
+        weights = [
+            "thin", "extralight", "light", "semilight", "regular", "normal", "medium",
+            "semibold", "demibold", "bold", "extrabold", "heavy", "black"
         ]
+        widths = [
+            "condensed", "semicondensed", "expanded", "compressed",
+            "semiconden", "semiconde", "semicond", "conden", "conde", "cond"
+        ]
+        abbreviations = ["b", "m", "r", "l", "el", "sb", "db", "h", "k"]
+        
+        style_suffixes = []
+        for weight in weights + abbreviations:
+            for width in widths:
+                style_suffixes.append(f"{weight} {width}")
+                style_suffixes.append(f"{weight}{width}")
+                style_suffixes.append(f"{width} {weight}")
+                style_suffixes.append(f"{width}{weight}")
+        style_suffixes.extend(weights)
+        style_suffixes.extend(widths)
+        style_suffixes.extend(abbreviations)
+        
+        style_suffixes = sorted(list(set(style_suffixes)), key=len, reverse=True)
+        
         separators = ["-", " ", "_"]
         for name in shared.FONT_FAMILIES:
             if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and name in shared.FONT_TYPOGRAPHIC_MAP:
@@ -331,7 +362,38 @@ def main():
                         family = name[:-len(pattern)]
                         if not hasattr(shared, 'FONT_TYPOGRAPHIC_MAP'):
                             shared.FONT_TYPOGRAPHIC_MAP = {}
-                        shared.FONT_TYPOGRAPHIC_MAP[name] = (family, style)
+                        
+                        if shared.FLAG_QT6:
+                            sub_styles = QFontDatabase.styles(name)
+                        else:
+                            fdb = QFontDatabase()
+                            sub_styles = fdb.styles(name)
+                            
+                        if sub_styles:
+                            for sub_style in sub_styles:
+                                sub_style_lower = sub_style.lower()
+                                style_lower = style.lower()
+                                
+                                # Ensure GDI-split family name 'name' itself is registered first
+                                clean_ts = clean_style_name(sub_style if sub_style_lower not in ("regular", "normal") else style)
+                                if name not in shared.FONT_TYPOGRAPHIC_MAP:
+                                    shared.FONT_TYPOGRAPHIC_MAP[name] = (family, clean_ts)
+                                    
+                                if sub_style_lower in ("regular", "normal") or sub_style_lower == style_lower:
+                                    pass
+                                elif sub_style_lower in style_lower:
+                                    pass
+                                elif style_lower in sub_style_lower:
+                                    suffix_to_add = re.sub(re.escape(style), '', sub_style, flags=re.IGNORECASE).strip()
+                                    if suffix_to_add:
+                                        clean_ts_composite = clean_style_name(f"{style} {suffix_to_add}")
+                                        shared.FONT_TYPOGRAPHIC_MAP[f"{name} {suffix_to_add}"] = (family, clean_ts_composite)
+                                else:
+                                    clean_ts_composite = clean_style_name(f"{style} {sub_style}")
+                                    shared.FONT_TYPOGRAPHIC_MAP[f"{name} {sub_style}"] = (family, clean_ts_composite)
+                        else:
+                            clean_ts = clean_style_name(style)
+                            shared.FONT_TYPOGRAPHIC_MAP[name] = (family, clean_ts)
                         matched = True
                         break
                 if matched:

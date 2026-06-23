@@ -211,13 +211,11 @@ class FontFamilyComboBox(ComboBox):
     param_changed = Signal(str, object)
     def __init__(self, emit_if_focused=True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.setEditable(True)
         self.currentTextChanged.connect(self.on_fontfamily_changed)
-        self.lineedit = lineedit = LineEdit(parent=self)
-        lineedit.return_pressed.connect(self.on_return_pressed)
-        self.setLineEdit(lineedit)
+        self.lineEdit().returnPressed.connect(self.on_return_pressed)
         self.emit_if_focused = emit_if_focused
         self.return_pressed = False
-        self.setEditable(True)
         
     def setCurrentText(self, text: str):
         display_text = shared.FONT_DISPLAY_NAME_MAP.get(text, text)
@@ -266,12 +264,32 @@ class FontFamilyComboBox(ComboBox):
             mapped_families.append(display_f)
             
         mapped_families = [f for f in mapped_families if f]
+        
+        # Filter out 21 classic Western system fonts
+        EXCLUDED_SYSTEM_FONTS = {
+            "arial", "calibri", "cambria", "candara", "comic sans ms", "consolas",
+            "constantia", "corbel", "courier new", "georgia", "palatino linotype",
+            "segoe ui", "sitka banner", "sitka display", "sitka heading",
+            "sitka small", "sitka subheading", "sitka text", "times new roman",
+            "trebuchet ms", "verdana"
+        }
+        filtered_mapped = []
+        for f in mapped_families:
+            f_lower = f.lower().strip()
+            internal_f = shared.FONT_INTERNAL_NAME_MAP.get(f, f).lower().strip() if hasattr(shared, 'FONT_INTERNAL_NAME_MAP') else f_lower
+            if f_lower not in EXCLUDED_SYSTEM_FONTS and internal_f not in EXCLUDED_SYSTEM_FONTS:
+                filtered_mapped.append(f)
+        mapped_families = filtered_mapped
+
         display_current_font = shared.FONT_DISPLAY_NAME_MAP.get(current_font, current_font)
         display_font_list = [shared.FONT_DISPLAY_NAME_MAP.get(f, f) for f in mapped_families]
         display_font_list = [x for x in display_font_list if x]
         
         # 按照字母顺序进行排序，避免 set 无序导致的列表乱序
         display_font_list = sorted(list(set(display_font_list)), key=lambda x: x.lower())
+        
+        from utils.logger import logger as LOGGER
+        LOGGER.info(f"[FontFamilyComboBox] update_font_list: count={len(display_font_list)}, current={display_current_font}")
         
         self.clear()
         self.addItems(display_font_list)
@@ -558,6 +576,15 @@ class FontFormatPanel(Widget):
 
     def update_style_options(self, family_name: str):
         from qtpy.QtGui import QFontDatabase
+        
+        def clean_style_name(style_name: str) -> str:
+            words = style_name.split()
+            cleaned = []
+            for w in words:
+                if not cleaned or w.lower() != cleaned[-1].lower():
+                    cleaned.append(w)
+            return " ".join(cleaned)
+
         internal_family = shared.FONT_INTERNAL_NAME_MAP.get(family_name, family_name)
         if shared.FLAG_QT6:
             styles = QFontDatabase.styles(internal_family)
@@ -566,6 +593,7 @@ class FontFormatPanel(Widget):
             styles = fdb.styles(internal_family)
             
         styles = list(styles) if styles else []
+        styles = [clean_style_name(s) for s in styles]
         
         # If styles is empty or we have mapped typographic styles, collect them from FONT_TYPOGRAPHIC_MAP
         if hasattr(shared, 'FONT_TYPOGRAPHIC_MAP') and shared.FONT_TYPOGRAPHIC_MAP:
@@ -575,13 +603,22 @@ class FontFormatPanel(Widget):
             for gdi_name, (tf, ts) in shared.FONT_TYPOGRAPHIC_MAP.items():
                 internal_tf = shared.FONT_INTERNAL_NAME_MAP.get(tf, tf) if hasattr(shared, 'FONT_INTERNAL_NAME_MAP') else tf
                 if internal_tf in (internal_family, display_name, internal_name):
-                    if ts not in typo_styles:
-                        typo_styles.append(ts)
+                    cleaned_ts = clean_style_name(ts)
+                    if cleaned_ts not in typo_styles:
+                        typo_styles.append(cleaned_ts)
             if typo_styles:
                 for ts in typo_styles:
                     if ts not in styles:
                         styles.append(ts)
-                        
+
+        # Remove duplicates while preserving order
+        unique_styles = []
+        for s in styles:
+            if s not in unique_styles:
+                unique_styles.append(s)
+        styles = unique_styles
+
+
         self.stylebox.block_emit = True
         self.stylebox.clear()
         if styles:
