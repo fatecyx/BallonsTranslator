@@ -2,7 +2,7 @@ from typing import List, Callable
 
 from qtpy.QtWidgets import QComboBox, QWidget
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QDoubleValidator
+from qtpy.QtGui import QDoubleValidator, QValidator
 
 from utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from .push_button import NoBorderPushBtn
@@ -82,6 +82,28 @@ class ParamComboBox(ComboBox):
         self.paramwidget_edited.emit(self.param_key, self.currentText())
 
 
+class RangeValidator(QValidator):
+    def __init__(self, min_val: float, max_val: float, parent=None):
+        super().__init__(parent)
+        self.min_val = min_val
+        self.max_val = max_val
+
+    def validate(self, string: str, pos: int):
+        if not string:
+            return QValidator.State.Intermediate, string, pos
+        if string == "." or string == "-":
+            return QValidator.State.Intermediate, string, pos
+        try:
+            val = float(string)
+            if val > self.max_val:
+                return QValidator.State.Invalid, string, pos
+            if val < self.min_val:
+                return QValidator.State.Intermediate, string, pos
+            return QValidator.State.Acceptable, string, pos
+        except ValueError:
+            return QValidator.State.Invalid, string, pos
+
+
 class SizeComboBox(QComboBox):
     
     param_changed = Signal(str, float)
@@ -91,26 +113,44 @@ class SizeComboBox(QComboBox):
         self.editTextChanged.connect(self.on_text_changed)
         self.activated.connect(self.on_current_index_changed)
         self.setEditable(True)
+        
+        # Connect editingFinished signal of lineEdit for formatting when edit is done
+        if self.lineEdit() is not None:
+            self.lineEdit().editingFinished.connect(self.on_editing_finished)
+
         self.min_val = val_range[0]
         self.max_val = val_range[1]
-        validator = QDoubleValidator()
-        if val_range is not None:
-            validator.setTop(val_range[1])
-            validator.setBottom(val_range[0])
-        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-
+        
+        # Use custom RangeValidator to strictly intercept any input exceeding max_val
+        validator = RangeValidator(self.min_val, self.max_val, self)
         self.setValidator(validator)
         self._value = 0
         if init_value is not None:
             self.setValue(init_value)
 
+    def is_editing(self) -> bool:
+        return self.hasFocus() or (self.lineEdit() is not None and self.lineEdit().hasFocus())
+
     def on_text_changed(self):
-        if self.hasFocus():
-            self.param_changed.emit(self.param_name, self.value())
+        if self.is_editing():
+            txt = self.currentText()
+            try:
+                val = float(txt)
+                val = min(self.max_val, max(self.min_val, val))
+                self._value = val
+                self.param_changed.emit(self.param_name, val)
+            except ValueError:
+                # Do not emit if the text is currently a transient invalid state like "." or ""
+                pass
 
     def on_current_index_changed(self):
         if self.hasFocus() or self.view().isVisible():
-            self.param_changed.emit(self.param_name, self.value())
+            val = self.value()
+            self.setValue(val, force_update_text=True)
+            self.param_changed.emit(self.param_name, val)
+
+    def on_editing_finished(self):
+        self.setValue(self.value(), force_update_text=True)
 
     def value(self) -> float:
         txt = self.currentText()
@@ -121,14 +161,16 @@ class SizeComboBox(QComboBox):
         except:
             return self._value
 
-    def setValue(self, value: float):
+    def setValue(self, value: float, force_update_text: bool = False):
         value = min(self.max_val, max(self.min_val, value))
-        self.setCurrentText(str(round(value, 2)))
+        self._value = value
+        if force_update_text or not self.is_editing():
+            self.setCurrentText(str(round(value, 2)))
 
     def changeByDelta(self, delta: float, multiplier = 0.01):
         if isinstance(multiplier, Callable):
             multiplier = multiplier()
-        self.setValue(self.value() + delta * multiplier)
+        self.setValue(self.value() + delta * multiplier, force_update_text=True)
 
 
 class SmallSizeComboBox(SizeComboBox):

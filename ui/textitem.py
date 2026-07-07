@@ -127,7 +127,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def paint_stroke(self, painter: QPainter):
         from utils.logger import logger
-        logger.debug(f"paint_stroke: idx={self.idx}, stroke_width={self.fontformat.stroke_width}")
+        # logger.debug(f"paint_stroke: idx={self.idx}, stroke_width={self.fontformat.stroke_width}")
         doc = QTextDocument()
         doc.setUndoRedoEnabled(False)
         doc.setDocumentMargin(self.document().documentMargin())
@@ -218,7 +218,7 @@ class TextBlkItem(QGraphicsTextItem):
 
     def initTextBlock(self, blk: TextBlock = None, set_format=True):
         from utils.logger import logger
-        logger.debug(f"initTextBlock: idx={self.idx}, set_format={set_format}")
+        # logger.debug(f"initTextBlock: idx={self.idx}, set_format={set_format}")
         self.blk = blk
         self.fontformat = blk.fontformat
         if blk is None:
