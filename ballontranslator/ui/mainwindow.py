@@ -892,6 +892,10 @@ class MainWindow(mainwindow_cls):
         self.canvas.path_reorder_mode_changed.connect(
             self.titleBar.path_reorder_action.setChecked
         )
+        self.titleBar.show_order_badge_trigger.connect(self.canvas.set_order_badges_visible)
+        self.canvas.order_badge_visibility_changed.connect(
+            self.titleBar.showOrderBadgeAction.setChecked
+        )
         self.titleBar.font_exclusion_trigger.connect(
             self.configPanel.show_font_exclusion_dialog
         )

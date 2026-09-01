@@ -212,6 +212,7 @@ class Canvas(QGraphicsScene):
     path_reorder_finished = Signal(object)
     path_reorder_mode_changed = Signal(bool)
     projective_scale_requested = Signal(object)
+    order_badge_visibility_changed = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -741,13 +742,6 @@ class Canvas(QGraphicsScene):
         ):
             event.accept()
             return
-        elif (
-            modifiers == Qt.KeyboardModifier.NoModifier
-            and key == QKEY.Key_N
-        ):
-            self.set_order_badges_visible(not self.order_badges_visible)
-            event.accept()
-            return
         elif key in ARROWKEY2DIRECTION:
             sel_blkitems = self.selected_text_items()
             if len(sel_blkitems) > 0:
@@ -864,6 +858,7 @@ class Canvas(QGraphicsScene):
         for item in self.textLayer.childItems():
             if isinstance(item, TextBlkItem):
                 item.set_order_badge_visible(visible)
+        self.order_badge_visibility_changed.emit(visible)
 
     def attach_text_item(self, item: TextBlkItem) -> None:
         """Attach a text item and its badge to their canvas-owned layers."""

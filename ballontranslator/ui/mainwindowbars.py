@@ -389,12 +389,18 @@ class TitleBar(Widget):
             action.setChecked(visible)
             action.triggered.connect(self.moduleVisibilityStateChanged)
 
+        self.showOrderBadgeAction = showOrderBadgeAction = QAction(self.tr('Show Text Block IDs'), self)
+        showOrderBadgeAction.setCheckable(True)
+        showOrderBadgeAction.setChecked(True)
+        showOrderBadgeAction.setShortcut(QKeySequence('N'))
+
         viewMenu.addAction(darkModeAction)
         viewMenu.addMenu(self.displayLanguageMenu)
         viewMenu.addSeparator()
         viewMenu.addActions(module_visibility_actions)
         viewMenu.addSeparator()
         viewMenu.addActions([drawBoardAction, texteditAction])
+        viewMenu.addAction(showOrderBadgeAction)
         viewMenu.addSeparator()
         viewMenu.addAction(importTextStyles)
         viewMenu.addAction(exportTextStyles)
@@ -402,6 +408,7 @@ class TitleBar(Widget):
         self.viewToolBtn.setPopupMode(QToolButton.InstantPopup)
         self.textedit_trigger = texteditAction.triggered
         self.drawboard_trigger = drawBoardAction.triggered
+        self.show_order_badge_trigger = showOrderBadgeAction.triggered
         self.importtstyle_trigger = importTextStyles.triggered
         self.exporttstyle_trigger = exportTextStyles.triggered
         self.darkmode_trigger = darkModeAction.triggered
