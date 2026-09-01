@@ -76,20 +76,41 @@ class ColoredFormatter(logging.Formatter):
             record.module2 = _colored(record.module, color="cyan")
             record.funcName2 = _colored(record.funcName, color="cyan")
             record.lineno2 = _colored(record.lineno, color="cyan")
+        else:
+            record.levelname2 = "{:<7}".format(record.levelname)
+            record.message2 = record.getMessage()
+            record.asctime2 = str(datetime.datetime.fromtimestamp(record.created))
+            record.module2 = record.module
+            record.funcName2 = record.funcName
+            record.lineno2 = str(record.lineno)
         return logging.Formatter.format(self, record)
 
 FORMAT = (
     "[%(levelname2)s] %(module2)s:%(funcName2)s:%(lineno2)s - %(message2)s"
 )
 
+class SafeStreamHandler(logging.StreamHandler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            self.stream.write(msg + self.terminator)
+            self.flush()
+        except OSError:
+            pass
+        except Exception:
+            self.handleError(record)
+
+
 class ColoredLogger(logging.Logger):
 
     def __init__(self, name):
+        import sys
         logging.Logger.__init__(self, name, logging.WARNING)
 
-        color_formatter = ColoredFormatter(FORMAT)
+        use_color = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+        color_formatter = ColoredFormatter(FORMAT, use_color=use_color)
 
-        console = logging.StreamHandler()
+        console = SafeStreamHandler(sys.stdout)
         console.setFormatter(color_formatter)
 
         self.addHandler(console)
@@ -146,3 +167,12 @@ logging.setLoggerClass(ColoredLogger)
 logger = logging.getLogger('BallonTranslator')
 logger.setLevel(logging.DEBUG)
 logger.propagate = False
+
+import sys
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.critical("Unhandled exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+sys.excepthook = handle_exception

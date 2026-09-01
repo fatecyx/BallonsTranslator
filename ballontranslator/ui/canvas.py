@@ -186,6 +186,8 @@ class Canvas(QGraphicsScene):
     layout_textblks = Signal()
     reset_angle = Signal()
     squeeze_blk = Signal()
+    merge_textblks = Signal()
+    split_textblks = Signal()
 
     run_blktrans = Signal(int)
 
@@ -1446,6 +1448,16 @@ class Canvas(QGraphicsScene):
             layout_act = menu.addAction(self.tr("Auto layout"))
             angle_act = menu.addAction(self.tr("Reset Angle"))
             squeeze_act = menu.addAction(self.tr("Squeeze"))
+
+            # Show merge/split options depending on selection
+            merge_act = None
+            split_act = None
+            selected_items = self.selected_text_items()
+            if len(selected_items) > 1:
+                merge_act = menu.addAction(self.tr("Merge selected text blocks"))
+            if len(selected_items) >= 1:
+                split_act = menu.addAction(self.tr("Split text block by lines"))
+
             menu.addSeparator()
             translate_act = menu.addAction(self.tr("translate"))
             ocr_act = menu.addAction(self.tr("OCR"))
@@ -1475,6 +1487,10 @@ class Canvas(QGraphicsScene):
                 self.reset_angle.emit()
             elif rst == squeeze_act:
                 self.squeeze_blk.emit()
+            elif merge_act is not None and rst == merge_act:
+                self.merge_textblks.emit()
+            elif split_act is not None and rst == split_act:
+                self.split_textblks.emit()
             elif rst == translate_act:
                 self.run_blktrans.emit(-1)
             elif rst == ocr_act:

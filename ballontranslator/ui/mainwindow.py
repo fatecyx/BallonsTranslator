@@ -232,6 +232,7 @@ class MainWindow(mainwindow_cls):
         self.leftBar.open_dir.connect(self.OpenProj)
         self.leftBar.open_json_proj.connect(self.openJsonProj)
         self.leftBar.save_proj.connect(self.manual_save)
+        self.leftBar.save_all_results.connect(self.on_save_all_results)
         self.leftBar.export_doc.connect(self.on_export_doc)
         self.leftBar.import_doc.connect(self.on_import_doc)
         self.leftBar.export_src_txt.connect(lambda : self.on_export_txt(dump_target='source'))
@@ -1481,6 +1482,58 @@ class MainWindow(mainwindow_cls):
             and self.imgtrans_proj.directory is not None:
             LOGGER.debug('Manually saving...')
             self.saveCurrentPage(update_scene_text=True, save_proj=True, restore_interface=True, save_rst_only=False)
+
+    def on_save_all_results(self):
+        """
+        Iterate through all loaded images and save all result images.
+        """
+        if self.imgtrans_proj.is_empty:
+            create_error_dialog(None, self.tr('No project loaded'))
+            return
+
+        try:
+            if self.canvas.text_change_unsaved():
+                self.st_manager.updateTextBlkList()
+
+            original_page = self.imgtrans_proj.current_img
+            total_pages = len(self.imgtrans_proj.pages)
+            saved_count = 0
+
+            for idx, page_name in enumerate(self.imgtrans_proj.pages):
+                try:
+                    self.imgtrans_proj.set_current_img(page_name)
+                    self.canvas.updateCanvas()
+                    self.st_manager.updateSceneTextitems()
+
+                    self.saveCurrentPage(
+                        update_scene_text=False,
+                        save_proj=False,
+                        restore_interface=False,
+                        save_rst_only=True
+                    )
+                    saved_count += 1
+
+                    progress = int((idx + 1) / total_pages * 100)
+                    self.titleBar.setTitleContent(
+                        page_name=f"{page_name} ({progress}%)"
+                    )
+                    self.app.processEvents()
+
+                except Exception as e:
+                    LOGGER.error(f"Failed to save {page_name}: {e}")
+                    continue
+
+            if original_page and original_page in self.imgtrans_proj.pages:
+                self.imgtrans_proj.set_current_img(original_page)
+                self.canvas.updateCanvas()
+                self.st_manager.updateSceneTextitems()
+                self.titleBar.setTitleContent(page_name=original_page)
+
+            create_info_dialog(self.tr('All results saved successfully!'))
+
+        except Exception as e:
+            create_error_dialog(e, self.tr('Failed to save all results'))
+            LOGGER.error(f"Error in on_save_all_results: {e}")
 
     def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False, keep_exist_as_backup=False):
         

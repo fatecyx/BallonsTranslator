@@ -1134,7 +1134,7 @@ def mit_merge_textlines(textlines: List[Quadrilateral], width: int, height: int,
         for txtln in txtlns:
             if txtln.direction == 'v':
                 nv += 1
-        is_vertical = nv >= len(txtlns) // 2
+        is_vertical = nv * 2 >= len(txtlns)
         region = TextBlock(
             lines=lines, text=texts, angle=angle, fontformat=ffmt, 
             _detected_font_size=font_size, src_is_vertical=is_vertical, vertical=is_vertical)

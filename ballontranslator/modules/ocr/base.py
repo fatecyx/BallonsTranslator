@@ -6,6 +6,7 @@ import cv2
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.registry import Registry
 from ballontranslator.utils.config import OCRTextPostprocess, pcfg
+from ballontranslator.utils.imgproc_utils import rgba2rgb
 from ballontranslator.utils.text_processing import (
     apply_letter_case,
     substitute_keywords,
@@ -61,8 +62,7 @@ class OCRBase(BaseModule):
 
         original_text = None
         try:
-            if img.ndim == 3 and img.shape[-1] == 4:
-                img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+            img = rgba2rgb(img)
 
             if blk_list is None:
                 text = self.ocr_img(img)

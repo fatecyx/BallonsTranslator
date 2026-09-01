@@ -129,6 +129,9 @@ class LeftBar(Widget):
         self.save_proj = actionSaveProj.triggered
         actionSaveProj.setShortcut(QKeySequence.StandardKey.Save)
 
+        actionSaveAllResults = QAction(self.tr("Save All Results"), self)
+        self.save_all_results = actionSaveAllResults.triggered
+
         actionExportAsDoc = QAction(self.tr("Export as Doc"), self)
         self.export_doc = actionExportAsDoc.triggered
         actionImportFromDoc = QAction(self.tr("Import from Doc"), self)
@@ -158,6 +161,7 @@ class LeftBar(Widget):
         openMenu.addSeparator()
         openMenu.addActions([
             actionSaveProj,
+            actionSaveAllResults,
             actionExportAsDoc,
             actionImportFromDoc,
             actionExportSrcTxt,

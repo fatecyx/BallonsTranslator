@@ -1,8 +1,10 @@
 from difflib import SequenceMatcher
 from typing import Callable, List, Optional, Sequence, Union
+import copy
+import numpy as np
 
 from qtpy.QtGui import QTextCharFormat, QTextCursor, QTextDocument
-from qtpy.QtCore import QPointF
+from qtpy.QtCore import QPointF, QRectF
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -11,7 +13,7 @@ except:
 from ..item import TextBlkItem, TextBlock
 from ..annotations import prepare_ruby_insertion
 from ..rendering.indexing import _utf16_boundaries
-from .widgets import TransTextEdit, SourceTextEdit
+from .widgets import TransTextEdit, SourceTextEdit, TransPairWidget
 from ballontranslator.utils.fontformat import (
     FontFormat,
     TextTransformStack,
@@ -398,7 +400,7 @@ class ApplyFontformatCommand(QUndoCommand):
             item.setRect(rect)
             edit.document().clearUndoRedoStacks()
 
-    
+
 class ReshapeItemCommand(QUndoCommand):
     def __init__(self, item: TextBlkItem):
         super(ReshapeItemCommand, self).__init__()
@@ -479,7 +481,7 @@ class AutoLayoutCommand(QUndoCommand):
             item.setPlainText('')
             item.setRect(rect, repaint=False)
             item.load_rich_text_html(html)
-            
+
     def undo(self):
         for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.old_html_lst, self.old_rect_lst):
             trans_widget.setPlainText(item.toPlainText())
@@ -496,7 +498,7 @@ class SqueezeCommand(QUndoCommand):
         self.ctrl = ctrl
         for item in blkitem_lst:
             self.old_rect_lst.append(item.absBoundingRect(qrect=True))
-    
+
     def redo(self):
         for blk in self.blkitem_lst:
             blk.squeezeBoundingRect()
@@ -519,7 +521,7 @@ class ResetAngleCommand(QUndoCommand):
                 self.angle_lst.append(rotation)
                 blkitem_lst.append(blk)
         self.blkitem_lst = blkitem_lst
-    
+
     def redo(self):
         for blk in self.blkitem_lst:
             blk.setAngle(0)
@@ -548,7 +550,7 @@ class TextItemEditCommand(QUndoCommand):
         if self.op_counter == 0:
             self.op_counter += 1
             return
-        
+
         self.blkitem.repaint_on_changed = False
         if self.new_ffmt_values is not None:
             for k, v in self.new_ffmt_values.items():
@@ -893,3 +895,298 @@ class MultiPasteCommand(QUndoCommand):
         for blkitem, etran in zip(self.blkitems, self.etrans):
             blkitem.undo()
             etran.undo()
+
+
+class MergeBlkItemsCommand(QUndoCommand):
+    """Merge multiple selected TextBlkItems into one, combining their bounding rects and text."""
+    def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
+        super().__init__(parent)
+        self.ctrl = ctrl  # SceneTextManager
+        # Sort by idx so text order is top-to-bottom / left to right
+        blk_list = sorted(blk_list, key=lambda b: b.idx)
+        self.blk_list = blk_list
+        self.pwidget_list: List[TransPairWidget] = [ctrl.pairwidget_list[b.idx] for b in blk_list]
+
+        # Snapshot state for undo
+        self.old_rects = [b.absBoundingRect(qrect=True) for b in blk_list]
+        self.old_trans_texts = [pw.e_trans.toPlainText() for pw in self.pwidget_list]
+        self.old_src_texts = [pw.e_source.toPlainText() for pw in self.pwidget_list]
+        self.old_html_list = [b.toHtml() for b in blk_list]
+
+        # Compute union bounding rect (scene coordinates)
+        union = QRectF()
+        for b in blk_list:
+            union = union.united(b.absBoundingRect(qrect=True))
+        self.merged_rect = union
+
+        # Merge text: source and translation joined with newline
+        self.merged_src = '\n'.join(t for t in self.old_src_texts if t.strip())
+        self.merged_trans = '\n'.join(t for t in self.old_trans_texts if t.strip())
+
+        # Primary item (first one) will become the merged block
+        self.primary = blk_list[0]
+        self.primary_pwidget = self.pwidget_list[0]
+        # Secondary items to be deleted
+        self.secondary_list = blk_list[1:]
+        self.secondary_pwidget_list = self.pwidget_list[1:]
+
+        self.op_counter = 0
+
+    def redo(self):
+        if self.op_counter == 0:
+            self.op_counter += 1
+            # First call: state already set up in __init__, just apply
+        # Expand primary to union rect and set merged text
+        self.primary.setRect(self.merged_rect)
+        self.primary_pwidget.e_source.setPlainText(self.merged_src)
+        self.primary_pwidget.e_trans.setPlainText(self.merged_trans)
+        self.primary.setPlainText(self.merged_trans)
+        # Delete secondary items
+        if self.secondary_list:
+            self.ctrl.deleteTextblkItemList(self.secondary_list, self.secondary_pwidget_list)
+
+    def undo(self):
+        # Restore secondary items first
+        if self.secondary_list:
+            self.ctrl.recoverTextblkItemList(self.secondary_list, self.secondary_pwidget_list)
+        # Restore all items to original state
+        for b, pw, rect, html, src_text, trans_text in zip(
+                self.blk_list, self.pwidget_list,
+                self.old_rects, self.old_html_list,
+                self.old_src_texts, self.old_trans_texts):
+            b.setRect(rect)
+            b.load_rich_text_html(html)
+            pw.e_source.setPlainText(src_text)
+            pw.e_trans.setPlainText(trans_text)
+
+
+class SplitBlkItemsCommand(QUndoCommand):
+    """Split selected TextBlkItems by translation lines into multiple blocks.
+
+    - Horizontal blocks: split top-to-bottom along Y axis
+    - Vertical blocks: split right-to-left along X axis
+    - Supports multiple selected blocks simultaneously
+    - Maintains relative ordering of blocks
+    """
+
+    def __init__(self, blk_list: List[TextBlkItem], ctrl, parent=None):
+        super().__init__(parent)
+        self.ctrl = ctrl  # SceneTextManager
+
+        # Sort by idx to maintain ordering
+        blk_list = sorted(blk_list, key=lambda b: b.idx)
+        self.blk_list = blk_list
+        self.pwidget_list: List[TransPairWidget] = [ctrl.pairwidget_list[b.idx] for b in blk_list]
+
+        # Record the original idx of each block (stable reference for reinsertion positions)
+        self.orig_idxs = [b.idx for b in blk_list]
+
+        # Snapshot for undo
+        self.old_rects = [b.absBoundingRect(qrect=True) for b in blk_list]
+        self.old_trans_texts = [pw.e_trans.toPlainText() for pw in self.pwidget_list]
+        self.old_src_texts = [pw.e_source.toPlainText() for pw in self.pwidget_list]
+        self.old_html_list = [b.toHtml() for b in blk_list]
+
+        # Pre-build the child block data for each source block (without adding them yet)
+        self.child_data_groups = []  # List[List[dict]]
+
+        for blk, pw, rect, trans_text, src_text in zip(
+                blk_list, self.pwidget_list,
+                self.old_rects, self.old_trans_texts, self.old_src_texts):
+
+            lines = trans_text.split('\n')
+            non_empty = [l for l in lines if l.strip()]
+
+            if len(non_empty) < 2:
+                self.child_data_groups.append([])
+                continue
+
+            n = len(non_empty)
+            is_vertical = blk.blk.vertical
+            child_data = []
+
+            for i, line_text in enumerate(non_empty):
+                new_blk_data = copy.deepcopy(blk.blk)
+                new_blk_data.rich_text = ''
+
+                if is_vertical:
+                    # Vertical text: split columns right-to-left
+                    col_w = rect.width() / n
+                    new_x = rect.x() + (n - 1 - i) * col_w
+                    new_rect = QRectF(new_x, rect.y(), col_w, rect.height())
+                else:
+                    # Horizontal text: split rows top-to-bottom
+                    row_h = rect.height() / n
+                    new_y = rect.y() + i * row_h
+                    new_rect = QRectF(rect.x(), new_y, rect.width(), row_h)
+
+                bx, by, bw, bh = int(new_rect.x()), int(new_rect.y()), int(new_rect.width()), int(new_rect.height())
+                new_blk_data.xyxy = [bx, by, bx + bw, by + bh]
+                new_blk_data._bounding_rect = [bx, by, bw, bh]
+                new_blk_data.set_lines_by_xywh([bx, by, bw, bh], adjust_bbox=True)
+                new_blk_data.translation = line_text
+                new_blk_data.text = [src_text] if i == 0 else ['']
+
+                child_data.append({
+                    'blk_data': new_blk_data,
+                    'trans_text': line_text,
+                    'src_text': src_text if i == 0 else '',
+                })
+
+            self.child_data_groups.append(child_data)
+
+        self.new_blk_groups: List[List[TextBlkItem]] = []
+        self.new_pwidget_groups: List[List[TransPairWidget]] = []
+        self.op_counter = 0
+
+    def redo(self):
+        if self.op_counter == 0:
+            self.op_counter += 1
+            self._do_split_first_time()
+        else:
+            self._do_split_recover()
+
+    def _do_split_first_time(self):
+        """First execution: create child items, delete originals, reorder."""
+        self.new_blk_groups = []
+        self.new_pwidget_groups = []
+
+        # Create new blocks for each source
+        for child_data_list in self.child_data_groups:
+            new_blks = []
+            new_pws = []
+            for cd in child_data_list:
+                new_blkitem = self.ctrl.addTextBlock(cd['blk_data'])
+                new_blkitem.setPlainText(cd['trans_text'])
+                new_pw = self.ctrl.pairwidget_list[-1]
+                new_pw.e_trans.setPlainText(cd['trans_text'])
+                new_pw.e_source.setPlainText(cd['src_text'])
+                new_blks.append(new_blkitem)
+                new_pws.append(new_pw)
+            self.new_blk_groups.append(new_blks)
+            self.new_pwidget_groups.append(new_pws)
+
+        # Delete originals that were successfully split
+        to_delete_blks = []
+        to_delete_pws = []
+        for blk, pw, new_blks in zip(self.blk_list, self.pwidget_list, self.new_blk_groups):
+            if new_blks:
+                to_delete_blks.append(blk)
+                to_delete_pws.append(pw)
+        if to_delete_blks:
+            self.ctrl.deleteTextblkItemList(to_delete_blks, to_delete_pws)
+
+        # Reorder new blocks to sit at original positions
+        self._reorder_to_original_positions()
+
+    def _do_split_recover(self):
+        """Subsequent redo: delete originals, recover children, reorder."""
+        to_delete_blks = []
+        to_delete_pws = []
+        for blk, pw, new_blks in zip(self.blk_list, self.pwidget_list, self.new_blk_groups):
+            if new_blks:
+                to_delete_blks.append(blk)
+                to_delete_pws.append(pw)
+        if to_delete_blks:
+            self.ctrl.deleteTextblkItemList(to_delete_blks, to_delete_pws)
+
+        for new_blks, new_pws in zip(self.new_blk_groups, self.new_pwidget_groups):
+            if new_blks:
+                self.ctrl.recoverTextblkItemList(new_blks, new_pws)
+
+        self._reorder_to_original_positions()
+
+    def _reorder_to_original_positions(self):
+        blk_item_list = self.ctrl.textblk_item_list
+        pairwidget_list = self.ctrl.pairwidget_list
+
+        all_new_blk_set = set()
+        for new_blks in self.new_blk_groups:
+            for b in new_blks:
+                all_new_blk_set.add(id(b))
+
+        kept = [(b, pairwidget_list[b.idx])
+                for b in blk_item_list if id(b) not in all_new_blk_set]
+
+        insert_map = {}
+        for orig_idx, new_blks, new_pws in zip(
+                self.orig_idxs, self.new_blk_groups, self.new_pwidget_groups):
+            if new_blks:
+                insert_map[orig_idx] = (new_blks, new_pws)
+
+        sorted_orig_idxs = sorted(insert_map.keys())
+
+        result_blks = []
+        result_pws = []
+
+        pos = 0
+        kept_remaining = list(kept)
+
+        for orig_idx in sorted_orig_idxs:
+            n_removed_before = sum(1 for oi in sorted_orig_idxs if oi < orig_idx)
+            target_pos = orig_idx - n_removed_before
+
+            while pos < target_pos and kept_remaining:
+                b, pw = kept_remaining.pop(0)
+                result_blks.append(b)
+                result_pws.append(pw)
+                pos += 1
+
+            child_blks, child_pws = insert_map[orig_idx]
+            result_blks.extend(child_blks)
+            result_pws.extend(child_pws)
+            pos += len(child_blks)
+
+        for b, pw in kept_remaining:
+            result_blks.append(b)
+            result_pws.append(pw)
+
+        self.ctrl.textblk_item_list.clear()
+        self.ctrl.pairwidget_list.clear()
+        for ii, (b, pw) in enumerate(zip(result_blks, result_pws)):
+            b.idx = ii
+            pw.idx = ii
+            pw.e_source.idx = ii
+            pw.e_trans.idx = ii
+            self.ctrl.textblk_item_list.append(b)
+            self.ctrl.pairwidget_list.append(pw)
+
+        layout = self.ctrl.textEditList.vlayout
+        for pw in result_pws:
+            layout.removeWidget(pw)
+        for ii, pw in enumerate(result_pws):
+            layout.insertWidget(ii, pw)
+            pw.updateIndex(ii)
+            pw.setVisible(True)
+
+        self.ctrl.updateTextBlkItemIdx()
+
+    def undo(self):
+        # Delete all child blocks
+        all_new_blks = []
+        all_new_pws = []
+        for new_blks, new_pws in zip(self.new_blk_groups, self.new_pwidget_groups):
+            all_new_blks.extend(new_blks)
+            all_new_pws.extend(new_pws)
+        if all_new_blks:
+            self.ctrl.deleteTextblkItemList(all_new_blks, all_new_pws)
+
+        # Recover original split blocks
+        to_recover = []
+        to_recover_pws = []
+        for blk, pw, new_blks in zip(self.blk_list, self.pwidget_list, self.new_blk_groups):
+            if new_blks:
+                to_recover.append(blk)
+                to_recover_pws.append(pw)
+        if to_recover:
+            self.ctrl.recoverTextblkItemList(to_recover, to_recover_pws)
+
+        # Restore original texts and rects
+        for blk, pw, rect, html, src_text, trans_text in zip(
+                self.blk_list, self.pwidget_list,
+                self.old_rects, self.old_html_list,
+                self.old_src_texts, self.old_trans_texts):
+            blk.setRect(rect)
+            blk.load_rich_text_html(html)
+            pw.e_source.setPlainText(src_text)
+            pw.e_trans.setPlainText(trans_text)

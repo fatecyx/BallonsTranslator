@@ -20,6 +20,7 @@ from .commands import (
     ApplyFontformatCommand,
     AutoLayoutCommand,
     CapitalizeTextItemsCommand,
+    MergeBlkItemsCommand,
     MoveBlkItemsCommand,
     MultiPasteCommand,
     PageReplaceAllCommand,
@@ -27,6 +28,7 @@ from .commands import (
     ReshapeItemCommand,
     ResetAngleCommand,
     RotateItemCommand,
+    SplitBlkItemsCommand,
     SqueezeCommand,
     TextEditCommand,
     TextItemEditCommand,
@@ -385,6 +387,8 @@ class SceneTextManager(QObject):
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvas.reset_angle.connect(self.onResetAngle)
         self.canvas.squeeze_blk.connect(self.onSqueezeBlk)
+        self.canvas.merge_textblks.connect(self.onMergeBlkItems)
+        self.canvas.split_textblks.connect(self.onSplitBlkItems)
         self.canvas.path_reorder_finished.connect(
             self.on_path_reorder_finished
         )
@@ -835,6 +839,18 @@ class SceneTextManager(QObject):
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(SqueezeCommand(selected_blks, self.txtblkShapeControl))
+
+    def onMergeBlkItems(self):
+        selected_blks = self.canvas.selected_text_items()
+        if len(selected_blks) > 1:
+            self.canvas.push_undo_command(MergeBlkItemsCommand(selected_blks, self))
+
+    def onSplitBlkItems(self):
+        selected_blks = self.canvas.selected_text_items()
+        if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
+            selected_blks.append(self.txtblkShapeControl.blk_item)
+        if len(selected_blks) > 0:
+            self.canvas.push_undo_command(SplitBlkItemsCommand(selected_blks, self))
 
     def _on_canvas_selection_changed(self):
         self.on_incanvas_selection_changed()
