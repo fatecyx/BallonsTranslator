@@ -11,7 +11,7 @@ cd %~dp0
 if exist "python\" (
     if not exist "ballontrans_pylibs_win\" ren "python" "ballontrans_pylibs_win"
 )
-set PATH=ballontrans_pylibs_win;ballontrans_pylibs_win\Scripts;%PATH%
+set PATH=ballontrans_pylibs_win;ballontrans_pylibs_win\Scripts;venv\Scripts;%PATH%
 set PYTHON=python.exe
 
 @REM use uv if available
